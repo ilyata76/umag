@@ -1,0 +1,30 @@
+MICROMAG7 test calculation 30/03/15 
+-----------------------SAMPLE GEOMETRY------------------------------------------
+type of initial configuration (generator.3d, infile )       generator.3d
+type of geometry                                            rectangle         
+-------------------------GRID---------------------------------------------------
+type of grid                                                rectungular mesh
+hx                                                          2.0e-9
+hy                                                          2.0e-9
+hz                                                          5.0e-9
+------------------------INITIAL MAGNETIZATION----------------------------------
+initial magnetization (random,vector,head_to_head)          vector
+initial mx                                                  0.0
+initial my                                                  1.0 
+initial mz                                                  0.0  
+--------------------------EXTERNAL FIELD---------------------------------------
+type of external field   (fixed,loop,impulse )              fixed
+geometry of external field (circular, line   )              line
+vx                                                          1.0
+vy                                                          0.0
+vz                                                          0.0  
+Bmin (or Bo)                                                0.0e-0  
+hB                                                          0.05e-1
+Bmax                                                        1.0e-1
+-----------------------PARAMETERS FOR NUMERICAL SCHEME-------------------------
+type of numerical scheme (llg_time, llg_min)                llg_min 
+NSTOP                                                       1.0e9
+IOUT                                                        1.0e3
+TIME STEP FOR LLG EVOLVE (DT, sec)  (1e-12 - 1e-15)         1.e-14
+ALFA                                                        0.5 
+Criterium for Minimization stop (TORQUE_STOP)               1.e-5                                       

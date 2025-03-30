@@ -1,0 +1,5 @@
+# Regions in the sample
+# Xmin(m)  Xmax(m)    Ymin(m)   Ymax(m)    Zmin(m)   Zmax(m)  Material  Ms (A/m)   A(J/m)    K1( J/m3 )  Easy_dir(u%x)  Easy_dir(u%y)  Easy_dir(u%z)  Exch_BiasX(T) Exch_BiasY(T) Exch_BiasZ(T)                                           
+  0.0e-9   200.0e-9    0.0e-9    20.0e-9    0.0e-9   5.0e-9   Py        800.0e3    13.e-12   0.0e3       1.0            0.0            0.0            0.0          0.0           0.0        
+
+
