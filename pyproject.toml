@@ -1,0 +1,19 @@
+[project]
+name = "umag"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "ilyata76",email = "ilyata76@yandex.ru"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "spindynapy @ ./spindynapy"
+]
+
+[tool.poetry]
+package-mode = false
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

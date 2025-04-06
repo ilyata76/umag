@@ -1,0 +1,3 @@
+[submodule "spindynapy/cpm"]
+	path = spindynapy/cpm
+	url = git@github.com:cpm-cmake/CPM.cmake.git

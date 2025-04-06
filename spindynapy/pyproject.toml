@@ -1,0 +1,23 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "cmake",
+    "ninja",
+    "pybind11-stubgen",
+    "pybind11-stubgen>=2.5",
+    "black"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spindynapy"
+version = "0.0.1"
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = []  # Не использовать авто-дискавери
+
+[tool.setuptools.dynamic]
+# можно включить это, если хочешь вычитать description или version из файла
+# version = {file = "spindynapy/__init__.py"}
