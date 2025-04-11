@@ -1,6 +1,8 @@
-import spindynapy
+from spindynapy.core.types.cartesian import CartesianDirection, CartesianSpin, CartesianCoordinates
 
-spindynapy.hello_function("World")
-
-obj = spindynapy.HelloClass("User")
-obj.greet()
+print(
+    CartesianSpin(
+        CartesianCoordinates(1, 1, 1),
+        CartesianDirection(2, 2, 2)
+    )
+)

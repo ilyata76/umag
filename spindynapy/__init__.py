@@ -1,7 +1,4 @@
-# библиотека, которая билдится spindynapy/setup.py
-from .lib.spindynapy_core import HelloClass, hello_function
+# библиотека, которая билдится spindynapy/setup
+from . import core
 
-
-__all__ = (
-    "HelloClass", "hello_function"
-)
+__all__ = ["core"]

@@ -139,33 +139,25 @@ class CMakeBuild(build_ext):
         if stubgen_bin is None:
             logging.warning("pybind11-stubgen not found in PATH")
             return
-        SPINDYNAPY_CORE_NAME = f"{ext.name}_core"
+        SPINDYNAPY_CORE_NAME = "core"
         # настройка PYTHONPATH
-        lib_dir = Path.cwd() / "lib"
+        lib_dir = Path.cwd()
         new_environ = os.environ.copy()
         new_environ["PYTHONPATH"] = f"{lib_dir}:{os.environ.get('PYTHONPATH', '')}"
         # запуск
         subprocess.run(
             [str(stubgen_bin), SPINDYNAPY_CORE_NAME, "-o", str(lib_dir)],
-            check=True, env=new_environ
+            check=True,
+            env=new_environ,
         )
-        # конечная проверка
-        target_pyi = lib_dir / f"{SPINDYNAPY_CORE_NAME}.pyi"
-        if target_pyi.exists():
-            target_pyi.rename(target_pyi)
-            logging.info(f"Generated stubs: {target_pyi}")
-        else:
-            logging.warning(f"{target_pyi} not found after stub generation.")
         # форматирование
         black_bin = which_executable("black")
         if black_bin is None:
             logging.warning("python-black not found in PATH")
             return
         # запуск форматирования
-        subprocess.run(
-            [str(black_bin), target_pyi],
-            check=True, env=new_environ
-        )
+        subprocess.run([str(black_bin), lib_dir / SPINDYNAPY_CORE_NAME], check=True, env=new_environ)
+
 
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.

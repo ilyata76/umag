@@ -10,6 +10,8 @@ __pycache__/
 .Python
 spindynapy/build/*
 !spindynapy/build/.gitkeep
+spindynapy/core/*
+!spindynapy/core/.gitkeep
 develop-eggs/
 dist/
 downloads/
