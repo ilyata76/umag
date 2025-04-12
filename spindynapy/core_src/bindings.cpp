@@ -5,7 +5,9 @@
 
 #include "constants.hpp"
 #include "geometries/base.hpp"
+#include "interactions/base.hpp"
 #include "registries/base.hpp"
+#include "simulation.hpp"
 #include "solvers/base.hpp"
 #include "types/base.hpp"
 #include "types/cartesian.hpp"
@@ -158,5 +160,23 @@ PYBIND11_MODULE(core, module) {
     constants_sci_module.doc() = sd::doc::module_constants_sci;
     constants_sci_module.attr("mu0") = sd::constants::sci::mu0;
     constants_sci_module.attr("pi") = sd::constants::sci::pi;
+
+    // interactions
+    py::module_ interaction_module = module.def_submodule("interactions");
+    interaction_module.doc() = sd::doc::module_interactions;
+
+    // interactions/base
+    py::module_ interaction_base_module = module.def_submodule("base");
+    interaction_base_module.doc() = sd::doc::module_interactions_base;
+
+    auto IInteraction = py::class_<sd::IInteraction, sd::StrPresentationMixin>(interaction_base_module, "ISimulation");
+    IInteraction.doc() = sd::doc::IInteraction;
+
+    // simulation
+    py::module_ simulation_module = module.def_submodule("simulation");
+    simulation_module.doc() = sd::doc::module_simulation;
+
+    auto ISimulation = py::class_<sd::ISimulation, sd::StrPresentationMixin>(simulation_module, "ISimulation");
+    ISimulation.doc() = sd::doc::ISimulation;
 
 }; // ! PYBIND11_MODULE
