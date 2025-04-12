@@ -8,15 +8,18 @@
 
 #include "base.hpp"
 
+#include <pybind11/eigen.h>
+
 namespace spindynapy {
 
 /**
  * Декартовые координаты
  */
 struct CartesianCoordinates : public ICoordinates {
-    double x, y, z;
+    Eigen::Vector3d _coords;
 
-    CartesianCoordinates(double _x, double _y, double _z) : x(_x), y(_y), z(_z) {};
+    CartesianCoordinates(double x, double y, double z) : _coords(x, y, z) {};
+    CartesianCoordinates(const Eigen::Vector3d &coords) : _coords(coords) {};
 
     virtual std::string __str__() const override;
     virtual std::string __repr__() const override;
@@ -26,9 +29,10 @@ struct CartesianCoordinates : public ICoordinates {
  * Вектор в декартовых координатах
  */
 struct CartesianDirection : public IDirection {
-    double sx, sy, sz;
+    Eigen::Vector3d _vector;
 
-    CartesianDirection(double _sx, double _sy, double _sz) : sx(_sx), sy(_sy), sz(_sz) {};
+    CartesianDirection(double x, double y, double z) : _vector(x, y, z) {};
+    CartesianDirection(const Eigen::Vector3d &vector) : _vector(vector) {};
 
     virtual std::string __str__() const override;
     virtual std::string __repr__() const override;
@@ -40,17 +44,17 @@ struct CartesianDirection : public IDirection {
  */
 class CartesianMoment : virtual public IMoment {
   protected:
-    std::unique_ptr<CartesianDirection> direction;
-    std::unique_ptr<CartesianCoordinates> coordinates;
+    std::unique_ptr<CartesianDirection> _direction;
+    std::unique_ptr<CartesianCoordinates> _coordinates;
 
   public:
-    CartesianMoment(CartesianCoordinates &_coordinates, CartesianDirection &_direction)
-        : direction(std::make_unique<CartesianDirection>(_direction)),
-          coordinates(std::make_unique<CartesianCoordinates>(_coordinates)) {};
+    CartesianMoment(const CartesianCoordinates &coordinates, const CartesianDirection &direction)
+        : _direction(std::make_unique<CartesianDirection>(direction)),
+          _coordinates(std::make_unique<CartesianCoordinates>(coordinates)) {};
 
-    CartesianMoment(CartesianCoordinates &&_coordinates, CartesianDirection &&_direction)
-        : direction(std::make_unique<CartesianDirection>(std::move(_direction))),
-          coordinates(std::make_unique<CartesianCoordinates>(std::move(_coordinates))) {};
+    CartesianMoment(CartesianCoordinates &&coordinates, CartesianDirection &&direction)
+        : _direction(std::make_unique<CartesianDirection>(std::move(direction))),
+          _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))) {};
 
     virtual std::string __str__() const override;
     virtual std::string __repr__() const override;
@@ -72,7 +76,7 @@ class CartesianMoment : virtual public IMoment {
  */
 class CartesianSpin : public CartesianMoment, public ISpin { // CartesianSpin + ISpin diamond
   public:
-    CartesianSpin(CartesianCoordinates &_coordinates, CartesianDirection &_direction)
+    CartesianSpin(const CartesianCoordinates &_coordinates, const CartesianDirection &_direction)
         : CartesianMoment(_coordinates, _direction) {};
 
     CartesianSpin(CartesianCoordinates &&_coordinates, CartesianDirection &&_direction)

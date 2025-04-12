@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set(CPM_USE_LOCAL_PACKAGES ON CACHE BOOL "Use local packages if available")
+set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/build-deps/" CACHE PATH "Path to CPM source cache")
 
 # python3-dev headers (!!!)
 # Явно указываем Python 3.12
@@ -17,11 +19,20 @@ find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development)
 
 # Зависимости
 include(${CMAKE_SOURCE_DIR}/cpm/cmake/CPM.cmake)
+
 CPMAddPackage(
     NAME pybind11  # pybind для работы с CPython API
     GITHUB_REPOSITORY pybind/pybind11
     VERSION 2.13.0
 )
+include_directories(${pybind11_SOURCE_DIR})
+
+CPMAddPackage(
+    NAME eigen  # eigen для работы с линейной алгеброй
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 3.4.0
+)
+include_directories(${eigen_SOURCE_DIR})
 
 # Собираем все .hpp файлы
 file(GLOB HEADERS 
@@ -41,3 +52,4 @@ pybind11_add_module(
     ${HEADERS}
     ${SOURCES}
 )
+target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module)

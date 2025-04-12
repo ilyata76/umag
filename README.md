@@ -5,7 +5,7 @@
 - make utility + Poetry Python PM
 - clang-format
 
-Делится на два: python-lib `spindynapy` & `main.py` для конечного применения
+Делится на два: python-lib `spindynapy` & `main.py` для конечного применения. Можно и `numpy` использовать (!!!)
 
 ## Run main.py
 ```sh

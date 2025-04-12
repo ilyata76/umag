@@ -6,7 +6,8 @@ requires = [
     "ninja",
     "pybind11-stubgen",
     "pybind11-stubgen>=2.5",
-    "black"
+    "black",
+    "numpy"
 ]
 build-backend = "setuptools.build_meta"
 

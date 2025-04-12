@@ -5,6 +5,9 @@ UseTab: Never  # всегда использовать пробелы вмест
 ColumnLimit: 120  # максимальная длина строки
 
 AllowShortFunctionsOnASingleLine: Inline  # короткие функции в одну строку (включая тело с {})
+AlignAfterOpenBracket: BlockIndent  # если переносить, то с новой строки с отступом
+BinPackArguments: false  # не запаковывать аргументы
+BinPackParameters: false  # не запаковывать аргументы при вызове
 AllowShortIfStatementsOnASingleLine: true  # короткий if без переноса строк
 AllowShortLoopsOnASingleLine: true  # короткие for/while в одну строку
 AllowShortCaseLabelsOnASingleLine: true  # короткие case-метки в switch в одну строку

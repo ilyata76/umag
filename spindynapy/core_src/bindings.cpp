@@ -42,10 +42,18 @@ PYBIND11_MODULE(core, module) {
     IDirection.doc() = sd::doc::IDirection;
 
     auto IMoment = py::class_<sd::IMoment, sd::StrPresentationMixin>(types_base_module, "IMoment")
-                       .def("getDirection", &sd::IMoment::getDirection, py::return_value_policy::reference,
-                            py::doc(sd::doc::IMoment_getDirection))
-                       .def("getCoordinates", &sd::IMoment::getCoordinates, py::return_value_policy::reference,
-                            py::doc(sd::doc::IMoment_getCoordinates));
+                       .def(
+                           "getDirection",
+                           &sd::IMoment::getDirection,
+                           py::return_value_policy::reference,
+                           py::doc(sd::doc::IMoment_getDirection)
+                       )
+                       .def(
+                           "getCoordinates",
+                           &sd::IMoment::getCoordinates,
+                           py::return_value_policy::reference,
+                           py::doc(sd::doc::IMoment_getCoordinates)
+                       );
     IMoment.doc() = sd::doc::IMoment;
 
     auto ISpin = py::class_<sd::ISpin, sd::IMoment>(types_base_module, "ISpin");
@@ -65,32 +73,34 @@ PYBIND11_MODULE(core, module) {
 
     auto CartesianCoordinates =
         py::class_<sd::CartesianCoordinates, sd::ICoordinates>(types_cartesian_module, "CartesianCoordinates")
-            .def(py::init<double, double, double>(), py::arg("_x"), py::arg("_y"), py::arg("_z"))
-            .def_readwrite("x", &sd::CartesianCoordinates::x)
-            .def_readwrite("y", &sd::CartesianCoordinates::y)
-            .def_readwrite("z", &sd::CartesianCoordinates::z);
+            .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
+            .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"));
     CartesianCoordinates.doc() = sd::doc::CartesianCoordinates;
 
     auto CartesianDirection =
         py::class_<sd::CartesianDirection, sd::IDirection>(types_cartesian_module, "CartesianDirection")
-            .def(py::init<double, double, double>(), py::arg("_sx"), py::arg("_sy"), py::arg("_sz"))
-            .def_readwrite("sx", &sd::CartesianDirection::sx)
-            .def_readwrite("sy", &sd::CartesianDirection::sy)
-            .def_readwrite("sz", &sd::CartesianDirection::sz);
+            .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
+            .def(py::init<const Eigen::Vector3d &>(), py::arg("vector"));
     CartesianDirection.doc() = sd::doc::CartesianDirection;
 
     auto CartesianMoment =
         py::class_<sd::CartesianMoment, sd::IMoment>(types_cartesian_module, "CartesianMoment")
-            .def(py::init<sd::CartesianCoordinates &, sd::CartesianDirection &>(), py::arg("_coordinates"),
-                 py::arg("_direction"))
+            .def(
+                py::init<const sd::CartesianCoordinates &, const sd::CartesianDirection &>(),
+                py::arg("coordinates"),
+                py::arg("direction")
+            )
             .def("getDirection", &sd::CartesianMoment::getDirection, py::return_value_policy::reference)
             .def("getCoordinates", &sd::CartesianMoment::getCoordinates, py::return_value_policy::reference);
     CartesianMoment.doc() = sd::doc::CartesianMoment;
 
     auto CartesianSpin =
         py::class_<sd::CartesianSpin, sd::CartesianMoment, sd::ISpin>(types_cartesian_module, "CartesianSpin")
-            .def(py::init<sd::CartesianCoordinates &, sd::CartesianDirection &>(), py::arg("_coordinates"),
-                 py::arg("_direction"));
+            .def(
+                py::init<const sd::CartesianCoordinates &, const sd::CartesianDirection &>(),
+                py::arg("coordinates"),
+                py::arg("direction")
+            );
     CartesianSpin.doc() = sd::doc::CartesianSpin;
 
     // geometries
