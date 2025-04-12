@@ -6,6 +6,7 @@
 #include "constants.hpp"
 #include "geometries/base.hpp"
 #include "registries/base.hpp"
+#include "solvers/base.hpp"
 #include "types/base.hpp"
 #include "types/cartesian.hpp"
 #include "types/material.hpp"
@@ -102,6 +103,17 @@ PYBIND11_MODULE(core, module) {
 
     auto IGeometry = py::class_<sd::IGeometry, sd::StrPresentationMixin>(geometries_base_module, "IGeometry");
     IGeometry.doc() = sd::doc::IGeometry;
+
+    // solvers
+    py::module_ solvers_module = module.def_submodule("solvers");
+    solvers_module.doc() = sd::doc::module_solvers;
+
+    // solvers/base
+    py::module_ solvers_base_module = solvers_module.def_submodule("base");
+    solvers_base_module.doc() = sd::doc::module_solvers_base;
+
+    auto ISolver = py::class_<sd::ISolver, sd::StrPresentationMixin>(solvers_base_module, "ISolver");
+    ISolver.doc() = sd::doc::ISolver;
 
     // registries
     py::module_ registries_module = module.def_submodule("registries");
