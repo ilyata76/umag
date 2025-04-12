@@ -5,6 +5,7 @@
 
 #include "constants.hpp"
 #include "geometries/base.hpp"
+#include "geometries/cartesian.hpp"
 #include "interactions/base.hpp"
 #include "registries/base.hpp"
 #include "simulation.hpp"
@@ -18,6 +19,9 @@
 namespace py = pybind11;
 namespace sd = spindynapy;
 
+// используй на классах-интерфейсах
+#define BIND_STR_REPR(cls) .def("__str__", &cls::__str__).def("__repr__", &cls::__repr__)
+
 PYBIND11_MODULE(core, module) {
 
     // types
@@ -28,22 +32,16 @@ PYBIND11_MODULE(core, module) {
     py::module_ types_base_module = types_module.def_submodule("base");
     types_base_module.doc() = sd::doc::module_types_base;
 
-    auto StrPresentationMixin =
-        py::class_<sd::StrPresentationMixin>(types_base_module, "StrPresentationMixin")
-            .def("__str__", &sd::StrPresentationMixin::__str__, py::doc(sd::doc::StrPresentationMixin___str__))
-            .def("__repr__", &sd::StrPresentationMixin::__repr__, py::doc(sd::doc::StrPresentationMixin___repr__));
-    StrPresentationMixin.doc() = sd::doc::StrPresentationMixin;
-
-    auto IMaterial = py::class_<sd::IMaterial, sd::StrPresentationMixin>(types_base_module, "IMaterial");
+    auto IMaterial = py::class_<sd::IMaterial>(types_base_module, "IMaterial") BIND_STR_REPR(sd::IMaterial);
     IMaterial.doc() = sd::doc::IMaterial;
 
-    auto ICoordinates = py::class_<sd::ICoordinates, sd::StrPresentationMixin>(types_base_module, "ICoordinates");
+    auto ICoordinates = py::class_<sd::ICoordinates>(types_base_module, "ICoordinates") BIND_STR_REPR(sd::ICoordinates);
     ICoordinates.doc() = sd::doc::ICoordinates;
 
-    auto IDirection = py::class_<sd::IDirection, sd::StrPresentationMixin>(types_base_module, "IDirection");
+    auto IDirection = py::class_<sd::IDirection>(types_base_module, "IDirection") BIND_STR_REPR(sd::IDirection);
     IDirection.doc() = sd::doc::IDirection;
 
-    auto IMoment = py::class_<sd::IMoment, sd::StrPresentationMixin>(types_base_module, "IMoment")
+    auto IMoment = py::class_<sd::IMoment>(types_base_module, "IMoment") BIND_STR_REPR(sd::IMoment)
                        .def(
                            "getDirection",
                            &sd::IMoment::getDirection,
@@ -113,8 +111,19 @@ PYBIND11_MODULE(core, module) {
     py::module_ geometries_base_module = geometries_module.def_submodule("base");
     geometries_base_module.doc() = sd::doc::module_geometries_base;
 
-    auto IGeometry = py::class_<sd::IGeometry, sd::StrPresentationMixin>(geometries_base_module, "IGeometry");
+    auto IGeometry = py::class_<sd::IGeometry, std::shared_ptr<sd::IGeometry>>(geometries_base_module, "IGeometry")
+        BIND_STR_REPR(sd::IGeometry);
     IGeometry.doc() = sd::doc::IGeometry;
+
+    // geometries/cartesian
+    py::module_ geometries_cartesian_module = geometries_module.def_submodule("cartesian");
+    geometries_cartesian_module.doc() = sd::doc::module_geometries_cartesian;
+
+    auto CartesianGeometry = py::class_<sd::CartesianGeometry, sd::IGeometry, std::shared_ptr<sd::CartesianGeometry>>(
+                                 geometries_cartesian_module, "CartesianGeometry"
+    )
+                                 .def(py::init<double>(), py::arg("x"))
+                                 .def_readwrite("xxx", &sd::CartesianGeometry::_x);
 
     // solvers
     py::module_ solvers_module = module.def_submodule("solvers");
@@ -124,7 +133,7 @@ PYBIND11_MODULE(core, module) {
     py::module_ solvers_base_module = solvers_module.def_submodule("base");
     solvers_base_module.doc() = sd::doc::module_solvers_base;
 
-    auto ISolver = py::class_<sd::ISolver, sd::StrPresentationMixin>(solvers_base_module, "ISolver");
+    auto ISolver = py::class_<sd::ISolver>(solvers_base_module, "ISolver") BIND_STR_REPR(sd::ISolver);
     ISolver.doc() = sd::doc::ISolver;
 
     // registries
@@ -135,7 +144,7 @@ PYBIND11_MODULE(core, module) {
     py::module_ registries_base_module = registries_module.def_submodule("base");
     registries_base_module.doc() = sd::doc::module_registries_base;
 
-    auto IRegistry = py::class_<sd::IRegistry, sd::StrPresentationMixin>(registries_base_module, "IRegistry");
+    auto IRegistry = py::class_<sd::IRegistry>(registries_base_module, "IRegistry") BIND_STR_REPR(sd::IRegistry);
     IRegistry.doc() = sd::doc::IRegistry;
 
     auto IMaterialRegistry =
@@ -169,14 +178,19 @@ PYBIND11_MODULE(core, module) {
     py::module_ interaction_base_module = module.def_submodule("base");
     interaction_base_module.doc() = sd::doc::module_interactions_base;
 
-    auto IInteraction = py::class_<sd::IInteraction, sd::StrPresentationMixin>(interaction_base_module, "ISimulation");
+    auto IInteraction =
+        py::class_<sd::IInteraction>(interaction_base_module, "IInteraction") BIND_STR_REPR(sd::IInteraction);
     IInteraction.doc() = sd::doc::IInteraction;
 
     // simulation
     py::module_ simulation_module = module.def_submodule("simulation");
     simulation_module.doc() = sd::doc::module_simulation;
 
-    auto ISimulation = py::class_<sd::ISimulation, sd::StrPresentationMixin>(simulation_module, "ISimulation");
+    auto ISimulation = py::class_<sd::ISimulation>(simulation_module, "ISimulation") BIND_STR_REPR(sd::ISimulation);
     ISimulation.doc() = sd::doc::ISimulation;
+
+    auto Simulation = py::class_<sd::Simulation, sd::ISimulation>(simulation_module, "Simulation")
+                          .def(py::init<std::shared_ptr<sd::IGeometry>>(), py::arg("geometry"));
+    Simulation.doc() = sd::doc::Simulation;
 
 }; // ! PYBIND11_MODULE

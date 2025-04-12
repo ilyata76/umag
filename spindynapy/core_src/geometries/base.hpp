@@ -1,5 +1,5 @@
-#ifndef __GEOMETRY_BASE_HPP__
-#define __GEOMETRY_BASE_HPP__
+#ifndef __GEOMETRIES_BASE_HPP__
+#define __GEOMETRIES_BASE_HPP__
 
 /**
  * Заголовки с базовыми интерфейсами для геометрий образцов.
@@ -17,10 +17,15 @@ namespace spindynapy {
 /**
  * Базовый интерфейс геометрии
  */
-class IGeometry : public StrPresentationMixin {
-  public:
+class IGeometry {
+  protected:
     IGeometry() = default;
-    virtual ~IGeometry() = 0;
+
+  public:
+    virtual ~IGeometry() = default;
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 }; // namespace spindynapy
@@ -39,4 +44,4 @@ constexpr char IGeometry[] = "Базовый интерфейс геометри
 
 }; // namespace spindynapy::doc
 
-#endif // ! __GEOMETRY_BASE_HPP__
+#endif // ! __GEOMETRIES_BASE_HPP__

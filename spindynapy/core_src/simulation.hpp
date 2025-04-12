@@ -6,7 +6,10 @@
  * управление симуляцией.
  */
 
+#include "geometries/base.hpp"
 #include "types/base.hpp"
+
+#include <stdexcept>
 
 namespace spindynapy {
 
@@ -17,10 +20,27 @@ namespace spindynapy {
  * эксперименте (богатое состояние), можно развивать систему согласно заданным настройкам,
  * а также извне, вызывая специальные для этого методы (API симулятора)
  */
-class ISimulation : public StrPresentationMixin {
+class ISimulation {
   public:
     ISimulation() = default;
-    virtual ~ISimulation() = 0;
+    virtual ~ISimulation() {};
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
+};
+
+class Simulation : public ISimulation {
+    std::shared_ptr<IGeometry> _geometry;
+
+  public:
+    Simulation(std::shared_ptr<IGeometry> geometry) : _geometry(geometry) {
+        if (!geometry) {
+            throw std::invalid_argument("Геометрия не может быть None");
+        }
+    };
+
+    virtual std::string __str__() const override { return _geometry->__str__(); };
+    virtual std::string __repr__() const override { return _geometry->__repr__(); };
 };
 
 }; // namespace spindynapy
@@ -34,6 +54,8 @@ constexpr char ISimulation[] =
     "Через управлятор, содержащий в себе всю информацию о проводимом\n"
     "эксперименте (богатое состояние), можно развивать систему согласно заданным настройкам,\n"
     "а также извне, вызывая специальные для этого методы (API симулятора)\n";
+
+constexpr char Simulation[] = "TODO";
 
 }; // namespace spindynapy::doc
 

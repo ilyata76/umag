@@ -18,51 +18,48 @@
 namespace spindynapy {
 
 /**
- * (Абстрактный) Миксин, добавляющий методы __str__ и __repr__
- * для создаваемых объектов для удобства принтинга
- */
-class StrPresentationMixin {
-  public:
-    StrPresentationMixin() = default;
-
-    /**
-     * Строковое (людское...) представление
-     */
-    virtual std::string __str__() const { return nullptr; };
-
-    /**
-     * Python-выражение объекта
-     */
-    virtual std::string __repr__() const { return nullptr; };
-
-    virtual ~StrPresentationMixin() {};
-};
-
-/**
  * (Интерфейс) Базовая единица абстракции - свойства материала.
  * Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.
  */
-struct IMaterial : public StrPresentationMixin {
+class IMaterial {
+  protected:
     IMaterial() = default;
+
+  public:
     virtual ~IMaterial() {};
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 /**
  * (Интерфейс) Базовая единица абстракции - координаты.
  * Описывает расположение в пространстве объекта.
  */
-struct ICoordinates : public StrPresentationMixin {
+class ICoordinates {
+  protected:
     ICoordinates() = default;
+
+  public:
     virtual ~ICoordinates() {};
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 /**
  * (Интерфейс) Базовая единица абстракции - направление, вектор.
  * Описывает направление сил, движения, etc.
  */
-struct IDirection : public StrPresentationMixin {
+class IDirection {
+  protected:
     IDirection() = default;
+
+  public:
     virtual ~IDirection() {};
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 /**
@@ -70,9 +67,11 @@ struct IDirection : public StrPresentationMixin {
  * Магнитный, квантово-механический, etc.
  * ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.
  */
-class IMoment : public StrPresentationMixin {
-  public:
+class IMoment {
+  protected:
     IMoment() = default;
+
+  public:
     virtual ~IMoment() {};
 
     /**
@@ -84,6 +83,9 @@ class IMoment : public StrPresentationMixin {
      * Получить расположение момента
      */
     virtual ICoordinates &getCoordinates() = 0;
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 /**
@@ -106,11 +108,6 @@ constexpr char module_types_base[] = "Модуль предоставляет б
                                      "  - базовые единицы абстракции \n"
                                      "  - миксины \n\n"
                                      "исключительно интерфейсные, не должны создаваться сами";
-
-constexpr char StrPresentationMixin[] = "(Абстрактный) Миксин, добавляющий методы __str__ и __repr__ \n"
-                                        "для создаваемых объектов для удобства принтинга";
-constexpr char StrPresentationMixin___str__[] = "Строковое (людское...) представление";
-constexpr char StrPresentationMixin___repr__[] = "Python-выражение объекта";
 
 constexpr char ICoordinates[] = "(Интерфейс) Базовая единица абстракции - координаты.\n"
                                 "Описывает расположение в пространстве объекта.";

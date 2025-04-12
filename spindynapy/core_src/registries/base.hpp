@@ -15,10 +15,13 @@ namespace spindynapy {
 /**
  * Базовый интерфейс регистра-контейнера
  */
-class IRegistry : public StrPresentationMixin {
+class IRegistry {
   public:
     IRegistry() = default;
     virtual ~IRegistry() = 0;
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 /**

@@ -15,27 +15,39 @@ namespace spindynapy {
 /**
  * Декартовые координаты
  */
-struct CartesianCoordinates : public ICoordinates {
+class CartesianCoordinates : public ICoordinates {
+  protected:
     Eigen::Vector3d _coords;
 
-    CartesianCoordinates(double x, double y, double z) : _coords(x, y, z) {};
-    CartesianCoordinates(const Eigen::Vector3d &coords) : _coords(coords) {};
+  public:
+    CartesianCoordinates(double x, double y, double z) noexcept : _coords(x, y, z) {};
+    CartesianCoordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
 
-    virtual std::string __str__() const override;
-    virtual std::string __repr__() const override;
+    virtual std::string __str__() const override {
+        return std::format("({:.3f}, {:.3f}, {:.3f})", _coords(0), _coords(1), _coords(2));
+    };
+    virtual std::string __repr__() const override {
+        return std::format("CartesianCoordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2));
+    };
 };
 
 /**
  * Вектор в декартовых координатах
  */
-struct CartesianDirection : public IDirection {
+class CartesianDirection : public IDirection {
+  protected:
     Eigen::Vector3d _vector;
 
-    CartesianDirection(double x, double y, double z) : _vector(x, y, z) {};
-    CartesianDirection(const Eigen::Vector3d &vector) : _vector(vector) {};
+  public:
+    CartesianDirection(double x, double y, double z) noexcept : _vector(x, y, z) {};
+    CartesianDirection(const Eigen::Vector3d &vector) noexcept : _vector(vector) {};
 
-    virtual std::string __str__() const override;
-    virtual std::string __repr__() const override;
+    virtual std::string __str__() const override {
+        return std::format("({:.3f}, {:.3f}, {:.3f})", _vector(0), _vector(1), _vector(2));
+    };
+    virtual std::string __repr__() const override {
+        return std::format("CartesianDirection(sx={:.3f}, sy={:.3f}, sz={:.3f})", _vector(0), _vector(1), _vector(2));
+    };
 };
 
 /**
@@ -48,26 +60,26 @@ class CartesianMoment : virtual public IMoment {
     std::unique_ptr<CartesianCoordinates> _coordinates;
 
   public:
-    CartesianMoment(const CartesianCoordinates &coordinates, const CartesianDirection &direction)
+    CartesianMoment(const CartesianCoordinates &coordinates, const CartesianDirection &direction) noexcept
         : _direction(std::make_unique<CartesianDirection>(direction)),
           _coordinates(std::make_unique<CartesianCoordinates>(coordinates)) {};
 
-    CartesianMoment(CartesianCoordinates &&coordinates, CartesianDirection &&direction)
+    CartesianMoment(CartesianCoordinates &&coordinates, CartesianDirection &&direction) noexcept
         : _direction(std::make_unique<CartesianDirection>(std::move(direction))),
           _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))) {};
-
-    virtual std::string __str__() const override;
-    virtual std::string __repr__() const override;
 
     /**
      * Получить вектор момента
      */
-    virtual CartesianDirection &getDirection() override;
+    virtual CartesianDirection &getDirection() override { return *_direction; };
 
     /**
      * Получить расположение момента
      */
-    virtual CartesianCoordinates &getCoordinates() override;
+    virtual CartesianCoordinates &getCoordinates() override { return *_coordinates; };
+
+    virtual std::string __str__() const override { return _direction->__str__() + " v:" + _coordinates->__str__(); };
+    virtual std::string __repr__() const override { return _direction->__str__() + " v:" + _coordinates->__str__(); };
 };
 
 /**
@@ -76,10 +88,10 @@ class CartesianMoment : virtual public IMoment {
  */
 class CartesianSpin : public CartesianMoment, public ISpin { // CartesianSpin + ISpin diamond
   public:
-    CartesianSpin(const CartesianCoordinates &_coordinates, const CartesianDirection &_direction)
+    CartesianSpin(const CartesianCoordinates &_coordinates, const CartesianDirection &_direction) noexcept
         : CartesianMoment(_coordinates, _direction) {};
 
-    CartesianSpin(CartesianCoordinates &&_coordinates, CartesianDirection &&_direction)
+    CartesianSpin(CartesianCoordinates &&_coordinates, CartesianDirection &&_direction) noexcept
         : CartesianMoment(_coordinates, _direction) {};
 };
 

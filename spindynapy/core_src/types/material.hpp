@@ -14,13 +14,18 @@ namespace spindynapy {
  * Свойства магнитного материала (ферромагнетиков, etc.)
  */
 class MagneticMaterial : public IMaterial {
+  protected:
     double exchange_constant_J;
 
   public:
     MagneticMaterial(double _exchange_constant_J) : exchange_constant_J(_exchange_constant_J) {};
 
-    virtual std::string __str__() const override;
-    virtual std::string __repr__() const override;
+    virtual std::string __str__() const override {
+        return std::format("(exchange: {:.3f})", this->exchange_constant_J);
+    };
+    virtual std::string __repr__() const override {
+        return std::format("MagneticMaterial(exchange_constant_J={:.3f}", this->exchange_constant_J);
+    };
 };
 
 }; // namespace spindynapy

@@ -13,10 +13,13 @@ namespace spindynapy {
 /**
  * Базовый интерфейс взаимодействий (сил, полей, etc.)
  */
-class IInteraction : public StrPresentationMixin {
+class IInteraction {
   public:
     IInteraction() = default;
     virtual ~IInteraction() = 0;
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 }; // namespace spindynapy

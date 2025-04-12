@@ -14,10 +14,13 @@ namespace spindynapy {
 /**
  * Базовый интерфейс решателя-интегратора
  */
-class ISolver : public StrPresentationMixin {
+class ISolver {
   public:
     ISolver() = default;
     virtual ~ISolver() = 0;
+
+    virtual std::string __str__() const { return nullptr; };
+    virtual std::string __repr__() const { return nullptr; };
 };
 
 }; // namespace spindynapy
