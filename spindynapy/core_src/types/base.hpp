@@ -100,6 +100,8 @@ class ISpin : virtual public IMoment {
 
 namespace spindynapy::doc {
 
+constexpr char module_types[] = "Модуль определяет множество типов данных и объектов - базовых единиц абстракций";
+
 constexpr char module_types_base[] = "Модуль предоставляет базовые абстракные классы и интерфейсы \n"
                                      "  - базовые единицы абстракции \n"
                                      "  - миксины \n\n"

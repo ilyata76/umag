@@ -31,7 +31,7 @@ class IMaterialRegistry : public IRegistry {
 };
 
 /**
- * Интерфейс для регистра-контейнера для разных областей материалов
+ * Интерфейс для регистра-контейнера для разных областей (регионов геометрии) образца
  */
 class IRegionRegistry : public IRegistry {
   public:
@@ -43,11 +43,13 @@ class IRegionRegistry : public IRegistry {
 
 namespace spindynapy::doc {
 
-constexpr char module_registries_base[] =
+constexpr char module_registries[] =
     " Регистры - контейнеры, хранящие в себе экземпляры переиспользуемых классов,\n"
     " которые задают базовые настройки симуляции (например, свойства конкретного материала).\n"
     " У регистров может быть расширенный функционал.\n"
     " Реализуются для паттерна \"легковес\". Живут всю программу.";
+
+constexpr const char *module_registries_base = module_registries;
 
 constexpr char IRegistry[] = "Базовый интерфейс регистра-контейнера";
 constexpr char IMaterialRegistry[] = "Интерфейс для регистра-контейнера для материалов";

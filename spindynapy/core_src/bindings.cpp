@@ -4,6 +4,7 @@
  */
 
 #include "constants.hpp"
+#include "geometries/base.hpp"
 #include "registries/base.hpp"
 #include "types/base.hpp"
 #include "types/cartesian.hpp"
@@ -17,13 +18,12 @@ namespace sd = spindynapy;
 PYBIND11_MODULE(core, module) {
 
     // types
-
     py::module_ types_module = module.def_submodule("types");
-    py::module_ types_base_module = types_module.def_submodule("base");
-    py::module_ types_material_module = types_module.def_submodule("material");
-    py::module_ types_cartesian_module = types_module.def_submodule("cartesian");
+    types_module.doc() = sd::doc::module_types;
 
     // types/base
+    py::module_ types_base_module = types_module.def_submodule("base");
+    types_base_module.doc() = sd::doc::module_types_base;
 
     auto StrPresentationMixin =
         py::class_<sd::StrPresentationMixin>(types_base_module, "StrPresentationMixin")
@@ -51,12 +51,16 @@ PYBIND11_MODULE(core, module) {
     ISpin.doc() = sd::doc::ISpin;
 
     // types/material
+    py::module_ types_material_module = types_module.def_submodule("material");
+    types_material_module.doc() = sd::doc::module_types_material;
 
     auto MagneticMaterial = py::class_<sd::MagneticMaterial, sd::IMaterial>(types_material_module, "MagneticMaterial")
                                 .def(py::init<double>(), py::arg("_exchange_constant_J"));
     MagneticMaterial.doc() = sd::doc::MagneticMaterial;
 
     // types/cartesian
+    py::module_ types_cartesian_module = types_module.def_submodule("cartesian");
+    types_cartesian_module.doc() = sd::doc::module_types_cartesian;
 
     auto CartesianCoordinates =
         py::class_<sd::CartesianCoordinates, sd::ICoordinates>(types_cartesian_module, "CartesianCoordinates")
@@ -88,9 +92,22 @@ PYBIND11_MODULE(core, module) {
                  py::arg("_direction"));
     CartesianSpin.doc() = sd::doc::CartesianSpin;
 
-    // registries
+    // geometries
+    py::module_ geometries_module = module.def_submodule("geometries");
+    geometries_module.doc() = sd::doc::module_geometries;
 
+    // geometries/base
+    py::module_ geometries_base_module = geometries_module.def_submodule("base");
+    geometries_base_module.doc() = sd::doc::module_geometries_base;
+
+    auto IGeometry = py::class_<sd::IGeometry, sd::StrPresentationMixin>(geometries_base_module, "IGeometry");
+    IGeometry.doc() = sd::doc::IGeometry;
+
+    // registries
     py::module_ registries_module = module.def_submodule("registries");
+    registries_module.doc() = sd::doc::module_registries;
+
+    // registries/base
     py::module_ registries_base_module = registries_module.def_submodule("base");
     registries_base_module.doc() = sd::doc::module_registries_base;
 
@@ -105,15 +122,17 @@ PYBIND11_MODULE(core, module) {
     IRegionRegistry.doc() = sd::doc::IRegionRegistry;
 
     // constants
-
     py::module_ constants_module = module.def_submodule("constants");
+    constants_module.doc() = sd::doc::module_constants;
+
     constants_module.doc() = sd::doc::module_constants;
     constants_module.attr("VACUUM_MAGNETIC_PERMEABILITY") = sd::constants::VACUUM_MAGNETIC_PERMEABILITY;
     constants_module.attr("NUMBER_PI") = sd::constants::NUMBER_PI;
 
     // constants/sci
-
     py::module_ constants_sci_module = constants_module.def_submodule("sci");
+    constants_sci_module.doc() = sd::doc::module_constants_sci;
+
     constants_sci_module.doc() = sd::doc::module_constants_sci;
     constants_sci_module.attr("mu0") = sd::constants::sci::mu0;
     constants_sci_module.attr("pi") = sd::constants::sci::pi;
