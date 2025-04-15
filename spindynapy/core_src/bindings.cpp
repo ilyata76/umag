@@ -4,193 +4,49 @@
  */
 
 #include "constants.hpp"
-#include "geometries/base.hpp"
-#include "geometries/cartesian.hpp"
-#include "interactions/base.hpp"
-#include "registries/base.hpp"
+#include "geometries.hpp"
+#include "interactions.hpp"
+#include "registries.hpp"
 #include "simulation.hpp"
-#include "solvers/base.hpp"
-#include "types/base.hpp"
-#include "types/cartesian.hpp"
-#include "types/material.hpp"
+#include "solvers.hpp"
+#include "types.hpp"
 
+#include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
-namespace sd = spindynapy;
-
-// используй на классах-интерфейсах
-#define BIND_STR_REPR(cls) .def("__str__", &cls::__str__).def("__repr__", &cls::__repr__)
 
 PYBIND11_MODULE(core, module) {
 
     // types
     py::module_ types_module = module.def_submodule("types");
-    types_module.doc() = sd::doc::module_types;
-
-    // types/base
-    py::module_ types_base_module = types_module.def_submodule("base");
-    types_base_module.doc() = sd::doc::module_types_base;
-
-    auto IMaterial = py::class_<sd::IMaterial>(types_base_module, "IMaterial") BIND_STR_REPR(sd::IMaterial);
-    IMaterial.doc() = sd::doc::IMaterial;
-
-    auto ICoordinates = py::class_<sd::ICoordinates>(types_base_module, "ICoordinates") BIND_STR_REPR(sd::ICoordinates);
-    ICoordinates.doc() = sd::doc::ICoordinates;
-
-    auto IDirection = py::class_<sd::IDirection>(types_base_module, "IDirection") BIND_STR_REPR(sd::IDirection);
-    IDirection.doc() = sd::doc::IDirection;
-
-    auto IMoment = py::class_<sd::IMoment>(types_base_module, "IMoment") BIND_STR_REPR(sd::IMoment)
-                       .def(
-                           "getDirection",
-                           &sd::IMoment::getDirection,
-                           py::return_value_policy::reference,
-                           py::doc(sd::doc::IMoment_getDirection)
-                       )
-                       .def(
-                           "getCoordinates",
-                           &sd::IMoment::getCoordinates,
-                           py::return_value_policy::reference,
-                           py::doc(sd::doc::IMoment_getCoordinates)
-                       );
-    IMoment.doc() = sd::doc::IMoment;
-
-    auto ISpin = py::class_<sd::ISpin, sd::IMoment>(types_base_module, "ISpin");
-    ISpin.doc() = sd::doc::ISpin;
-
-    // types/material
-    py::module_ types_material_module = types_module.def_submodule("material");
-    types_material_module.doc() = sd::doc::module_types_material;
-
-    auto MagneticMaterial = py::class_<sd::MagneticMaterial, sd::IMaterial>(types_material_module, "MagneticMaterial")
-                                .def(py::init<double>(), py::arg("_exchange_constant_J"));
-    MagneticMaterial.doc() = sd::doc::MagneticMaterial;
-
-    // types/cartesian
-    py::module_ types_cartesian_module = types_module.def_submodule("cartesian");
-    types_cartesian_module.doc() = sd::doc::module_types_cartesian;
-
-    auto CartesianCoordinates =
-        py::class_<sd::CartesianCoordinates, sd::ICoordinates>(types_cartesian_module, "CartesianCoordinates")
-            .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
-            .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"));
-    CartesianCoordinates.doc() = sd::doc::CartesianCoordinates;
-
-    auto CartesianDirection =
-        py::class_<sd::CartesianDirection, sd::IDirection>(types_cartesian_module, "CartesianDirection")
-            .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
-            .def(py::init<const Eigen::Vector3d &>(), py::arg("vector"));
-    CartesianDirection.doc() = sd::doc::CartesianDirection;
-
-    auto CartesianMoment =
-        py::class_<sd::CartesianMoment, sd::IMoment>(types_cartesian_module, "CartesianMoment")
-            .def(
-                py::init<const sd::CartesianCoordinates &, const sd::CartesianDirection &>(),
-                py::arg("coordinates"),
-                py::arg("direction")
-            )
-            .def("getDirection", &sd::CartesianMoment::getDirection, py::return_value_policy::reference)
-            .def("getCoordinates", &sd::CartesianMoment::getCoordinates, py::return_value_policy::reference);
-    CartesianMoment.doc() = sd::doc::CartesianMoment;
-
-    auto CartesianSpin =
-        py::class_<sd::CartesianSpin, sd::CartesianMoment, sd::ISpin>(types_cartesian_module, "CartesianSpin")
-            .def(
-                py::init<const sd::CartesianCoordinates &, const sd::CartesianDirection &>(),
-                py::arg("coordinates"),
-                py::arg("direction")
-            );
-    CartesianSpin.doc() = sd::doc::CartesianSpin;
+    pyBindTypes(types_module);
 
     // geometries
     py::module_ geometries_module = module.def_submodule("geometries");
-    geometries_module.doc() = sd::doc::module_geometries;
-
-    // geometries/base
-    py::module_ geometries_base_module = geometries_module.def_submodule("base");
-    geometries_base_module.doc() = sd::doc::module_geometries_base;
-
-    auto IGeometry = py::class_<sd::IGeometry, std::shared_ptr<sd::IGeometry>>(geometries_base_module, "IGeometry")
-        BIND_STR_REPR(sd::IGeometry);
-    IGeometry.doc() = sd::doc::IGeometry;
-
-    // geometries/cartesian
-    py::module_ geometries_cartesian_module = geometries_module.def_submodule("cartesian");
-    geometries_cartesian_module.doc() = sd::doc::module_geometries_cartesian;
-
-    auto CartesianGeometry = py::class_<sd::CartesianGeometry, sd::IGeometry, std::shared_ptr<sd::CartesianGeometry>>(
-                                 geometries_cartesian_module, "CartesianGeometry"
-    )
-                                 .def(py::init<double>(), py::arg("x"))
-                                 .def_readwrite("xxx", &sd::CartesianGeometry::_x);
+    pyBindGeometries(geometries_module);
 
     // solvers
     py::module_ solvers_module = module.def_submodule("solvers");
-    solvers_module.doc() = sd::doc::module_solvers;
-
-    // solvers/base
-    py::module_ solvers_base_module = solvers_module.def_submodule("base");
-    solvers_base_module.doc() = sd::doc::module_solvers_base;
-
-    auto ISolver = py::class_<sd::ISolver>(solvers_base_module, "ISolver") BIND_STR_REPR(sd::ISolver);
-    ISolver.doc() = sd::doc::ISolver;
-
-    // registries
-    py::module_ registries_module = module.def_submodule("registries");
-    registries_module.doc() = sd::doc::module_registries;
-
-    // registries/base
-    py::module_ registries_base_module = registries_module.def_submodule("base");
-    registries_base_module.doc() = sd::doc::module_registries_base;
-
-    auto IRegistry = py::class_<sd::IRegistry>(registries_base_module, "IRegistry") BIND_STR_REPR(sd::IRegistry);
-    IRegistry.doc() = sd::doc::IRegistry;
-
-    auto IMaterialRegistry =
-        py::class_<sd::IMaterialRegistry, sd::IRegistry>(registries_base_module, "IMaterialRegistry");
-    IMaterialRegistry.doc() = sd::doc::IMaterialRegistry;
-
-    auto IRegionRegistry = py::class_<sd::IRegionRegistry, sd::IRegistry>(registries_base_module, "IRegionRegistry");
-    IRegionRegistry.doc() = sd::doc::IRegionRegistry;
+    pyBindSolvers(solvers_module);
 
     // constants
     py::module_ constants_module = module.def_submodule("constants");
-    constants_module.doc() = sd::doc::module_constants;
-
-    constants_module.doc() = sd::doc::module_constants;
-    constants_module.attr("VACUUM_MAGNETIC_PERMEABILITY") = sd::constants::VACUUM_MAGNETIC_PERMEABILITY;
-    constants_module.attr("NUMBER_PI") = sd::constants::NUMBER_PI;
-
-    // constants/sci
-    py::module_ constants_sci_module = constants_module.def_submodule("sci");
-    constants_sci_module.doc() = sd::doc::module_constants_sci;
-
-    constants_sci_module.doc() = sd::doc::module_constants_sci;
-    constants_sci_module.attr("mu0") = sd::constants::sci::mu0;
-    constants_sci_module.attr("pi") = sd::constants::sci::pi;
+    pyBindConstants(constants_module);
 
     // interactions
     py::module_ interaction_module = module.def_submodule("interactions");
-    interaction_module.doc() = sd::doc::module_interactions;
+    pyBindInteractions(interaction_module);
 
-    // interactions/base
-    py::module_ interaction_base_module = module.def_submodule("base");
-    interaction_base_module.doc() = sd::doc::module_interactions_base;
-
-    auto IInteraction =
-        py::class_<sd::IInteraction>(interaction_base_module, "IInteraction") BIND_STR_REPR(sd::IInteraction);
-    IInteraction.doc() = sd::doc::IInteraction;
+    // registries
+    py::module_ registries_module = module.def_submodule("registries");
+    pyBindRegistries(registries_module);
 
     // simulation
     py::module_ simulation_module = module.def_submodule("simulation");
-    simulation_module.doc() = sd::doc::module_simulation;
-
-    auto ISimulation = py::class_<sd::ISimulation>(simulation_module, "ISimulation") BIND_STR_REPR(sd::ISimulation);
-    ISimulation.doc() = sd::doc::ISimulation;
-
-    auto Simulation = py::class_<sd::Simulation, sd::ISimulation>(simulation_module, "Simulation")
-                          .def(py::init<std::shared_ptr<sd::IGeometry>>(), py::arg("geometry"));
-    Simulation.doc() = sd::doc::Simulation;
+    pyBindSimulation(simulation_module);
 
 }; // ! PYBIND11_MODULE
+
+// TODO: комментарии нормальные ко всем модулям, функциям и т.д.

@@ -6,6 +6,10 @@
  * Фундаментальные и не только. Просто константы.
  */
 
+#include <pybind11/pybind11.h>
+
+namespace py = pybind11;
+
 namespace spindynapy::constants {
 
 constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1e-6;
@@ -20,19 +24,27 @@ constexpr auto pi = NUMBER_PI;
 
 }; // namespace spindynapy::constants
 
-namespace spindynapy::doc {
+inline void pyBindConstants(py::module_ &module) {
+    using namespace spindynapy::constants;
 
-constexpr char module_constants[] =
-    ("Модуль, отвечающий за предоставление фундаментальных констант \n"
-     "и любых других, используемых в приложении. \n"
-     "Здесь - константы через полные названия. \n"
-     "В .sci предоставлены \"научные\" короткие версии наименований констант (mu0, pi, etc...)");
+    // clang-format off
 
-constexpr char module_constants_sci[] =
-    ("Модуль, отвечающий за предоставление фундаментальных констант \n"
-     "и любых других, используемых в приложении. \n"
-     "Здесь предоставлены \"научные\" короткие версии наименований констант (mu0, pi, etc...)");
+    module.doc() = "Модуль, отвечающий за предоставление фундаментальных констант \n"
+                   "и любых других, используемых в приложении. \n"
+                   "Здесь - константы через полные названия. \n"
+                   "В .sci предоставлены \"научные\" короткие версии наименований констант (mu0, pi, etc...)";
 
-}; // namespace spindynapy::doc
+    module.attr("VACUUM_MAGNETIC_PERMEABILITY") = VACUUM_MAGNETIC_PERMEABILITY;
+    module.attr("NUMBER_PI") = NUMBER_PI;
+
+    module.doc() = "Модуль, отвечающий за предоставление фундаментальных констант \n"
+                   "и любых других, используемых в приложении. \n"
+                   "Здесь предоставлены \"научные\" короткие версии наименований констант (mu0, pi, etc...)";
+
+    module.attr("mu0") = sci::mu0;
+    module.attr("pi") = sci::pi;
+
+    // clang-format on
+}
 
 #endif // ! __CONSTANTS_HPP__

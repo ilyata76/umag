@@ -12,6 +12,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set(CPM_USE_LOCAL_PACKAGES ON CACHE BOOL "Use local packages if available")
 set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/build-deps/" CACHE PATH "Path to CPM source cache")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # python3-dev headers (!!!)
 # Явно указываем Python 3.12
@@ -53,3 +54,11 @@ pybind11_add_module(
     ${SOURCES}
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module)
+
+# Копирует compile_commands.json в корень проекта после конфигурации
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_BINARY_DIR}/compile_commands.json"
+        "${CMAKE_SOURCE_DIR}/compile_commands.json"
+)

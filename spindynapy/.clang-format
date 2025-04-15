@@ -2,12 +2,13 @@ BasedOnStyle: LLVM  # style-guide
 IndentWidth: 4  # размер отступа в пробелах  для вложенных блоков кода
 TabWidth: 4  # ширина табуляции
 UseTab: Never  # всегда использовать пробелы вместо табов
-ColumnLimit: 120  # максимальная длина строки
+ColumnLimit: 110  # максимальная длина строки
 
 AllowShortFunctionsOnASingleLine: Inline  # короткие функции в одну строку (включая тело с {})
 AlignAfterOpenBracket: BlockIndent  # если переносить, то с новой строки с отступом
 BinPackArguments: false  # не запаковывать аргументы
 BinPackParameters: false  # не запаковывать аргументы при вызове
+PackConstructorInitializers: NextLine  # не запаковывать при конструкторах
 AllowShortIfStatementsOnASingleLine: true  # короткий if без переноса строк
 AllowShortLoopsOnASingleLine: true  # короткие for/while в одну строку
 AllowShortCaseLabelsOnASingleLine: true  # короткие case-метки в switch в одну строку
@@ -17,5 +18,7 @@ IncludeBlocks: Regroup  # группировать #include по блокам
 
 SpaceBeforeParens: ControlStatements  # пробел перед инструкциями типа (if, for, while)
 SpaceBeforeCpp11BracedList: true  # пробел перед скобка в modern c++ конструкциях
+
+# DisableFormat: True
 
 # https://clang.llvm.org/docs/ClangFormatStyleOptions.html
