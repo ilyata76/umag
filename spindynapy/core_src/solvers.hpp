@@ -16,6 +16,7 @@
 #include "types.hpp"
 
 #include <iostream>
+#include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <stdexcept>
@@ -30,13 +31,15 @@ namespace spindynapy {
  * Базовый интерфейс решателя-интегратора
  */
 
+typedef std::vector<Eigen::Vector3d> eff_f;
+
 class ISolver {
   protected:
     virtual std::string getSolverName() { throw std::logic_error("Method getSolverName Not implemented"); };
-    virtual void updateMomentsCartesian(IGeometry &geometry) {
+    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) {
         throw std::logic_error("Method updateMomentsCartesian Not implemented");
     };
-    virtual void updateMomentsSpherical(IGeometry &geometry) {
+    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) {
         throw std::logic_error("Method updateMomentsSpherical Not implemented");
     };
 
@@ -47,7 +50,7 @@ class ISolver {
     virtual std::string __str__() const { return nullptr; };
     virtual std::string __repr__() const { return nullptr; };
 
-    virtual void updateMoments(IGeometry &geometry) {
+    virtual void updateMoments(IGeometry &geometry, eff_f effective_fields, double dt) {
         throw std::logic_error("Method step Not implemented");
     };
 };
@@ -65,12 +68,12 @@ template <typename CoordSystem> class AbstractSolver : public ISolver {
     virtual std::string getSolverName() override {
         throw std::logic_error("Method getSolverName Not implemented");
     };
-    virtual void updateMomentsCartesian(IGeometry &geometry) override {
+    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) override {
         throw std::logic_error(
             "The solving via " + getSolverName() + " is not implemented in the Cartesian coordinate system"
         );
     };
-    virtual void updateMomentsSpherical(IGeometry &geometry) override {
+    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) override {
         throw std::logic_error(
             "The solving via " + getSolverName() + " is not implemented in the Spherical coordinate system"
         );
@@ -80,12 +83,13 @@ template <typename CoordSystem> class AbstractSolver : public ISolver {
     AbstractSolver() = default;
     virtual ~AbstractSolver() = default;
 
-    virtual void updateMoments(IGeometry &geometry) override { // метод разрешает ещё при препроцессинге какой
-                                                               // метод вызвать для текущей реализации шаблона
+    virtual void updateMoments(IGeometry &geometry, eff_f effective_fields, double dt)
+        override { // метод разрешает ещё при препроцессинге какой
+                   // метод вызвать для текущей реализации шаблона
         if constexpr (std::is_same_v<CoordSystem, CartesianCoordSystem>) {
-            return this->updateMomentsCartesian(geometry);
+            return this->updateMomentsCartesian(geometry, effective_fields, dt);
         } else if constexpr (std::is_same_v<CoordSystem, SphericalCoordSystem>) {
-            return this->updateMomentsSpherical(geometry);
+            return this->updateMomentsSpherical(geometry, effective_fields, dt);
         } else {
             throw std::logic_error("The solving is not implemented with this coords system");
         }
@@ -100,11 +104,11 @@ using SphericalAbstractSolver = AbstractSolver<SphericalCoordSystem>;
 template <typename CoordSystem> class LLGSolver : public AbstractSolver<CoordSystem> {
   protected: // todo: стратегия численного исчисления (эйлер, хойн и т.д.)
     virtual std::string getSolverName() override { return "LLG Solver"; };
-    virtual void updateMomentsCartesian(IGeometry &geometry) override {
+    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) override {
         std::cout << "AMOGUS\0";
         return;
     }
-    virtual void updateMomentsSpherical(IGeometry &geometry) override {
+    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) override {
         std::cout << "SPHERICAL AMOGUS\0";
         return;
     }
@@ -133,7 +137,7 @@ inline void pyBindSolvers(py::module_ &module) {
     py::class_<ISolver, std::shared_ptr<ISolver>>(module, "ISolver")
         .def("__str__", &ISolver::__str__)
         .def("__repr__", &ISolver::__repr__)
-        .def("update_moments", &ISolver::updateMoments, py::arg("geometry"))
+        .def("update_moments", &ISolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
         .doc() = "Базовый интерфейс решателя-интегратора";
 
     py::class_<CartesianAbstractSolver, ISolver, std::shared_ptr<CartesianAbstractSolver>>(module, "CartesianAbstractSolver")

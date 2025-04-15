@@ -87,6 +87,7 @@ class Simulation : public ISimulation {
           _dt(dt) {
         //
         if (!geometry) throw std::invalid_argument("Геометрия не может быть None");
+        std::cout << geometry->__len__();
         if (!solver) throw std::invalid_argument("Решатель не может быть None");
         if (!interaction_registry || material_registry->isEmpty())
             throw std::invalid_argument("Регистр взаимодействий не может быть None");
@@ -97,10 +98,12 @@ class Simulation : public ISimulation {
     virtual std::string __str__() const override { return _geometry->__str__(); };
     virtual std::string __repr__() const override { return _geometry->__repr__(); };
 
-    virtual void simulateOneStep() override { return this->_solver->updateMoments(*this->_geometry); };
+    virtual void simulateOneStep() override {
+        return this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
+    };
     virtual void simulateManySteps(uint steps) override {
         for (uint i = 0; i < steps; ++i) {
-            this->_solver->updateMoments(*this->_geometry);
+            this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
         }
         return;
     };

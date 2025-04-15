@@ -33,6 +33,33 @@ struct SphericalCoordSystem {
 typedef short regnum;
 
 /**
+ * (Интерфейс) Базовая единица абстракции - свойства материала.
+ * Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.
+
+ * компромисс: полноценный класс с набором параметров.
+ */
+class Material {
+  protected:
+    double _exchange_constant_J;
+    regnum _material_number;
+
+  public:
+    Material(regnum material_number, double exchange_constant_J)
+        : _material_number(material_number), _exchange_constant_J(exchange_constant_J) {};
+    virtual ~Material() = default;
+
+    regnum getNumber() const { return this->_material_number; };
+    std::string __str__() const { return std::to_string(this->_material_number); };
+    std::string __repr__() const {
+        return std::format(
+            "Material(material_number={}, exchange_constant_J={})",
+            this->_material_number,
+            this->_exchange_constant_J
+        );
+    }
+};
+
+/**
  * (Интерфейс) Базовая единица абстракции - координаты.
  * Описывает расположение в пространстве объекта.
  */
@@ -45,6 +72,10 @@ class ICoordinates {
 
     virtual std::string __str__() const { return nullptr; };
     virtual std::string __repr__() const { return nullptr; };
+
+    virtual double getDistanceFrom(const ICoordinates &other) const {
+        throw std::logic_error("Not implemented");
+    };
 };
 
 /**
@@ -65,6 +96,11 @@ class CartesianCoordinates : public ICoordinates {
         return std::format(
             "CartesianCoordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2)
         );
+    };
+
+    virtual double getDistanceFrom(const ICoordinates &other) const override {
+        const auto &cart = dynamic_cast<const CartesianCoordinates &>(other);
+        return (this->_coords - cart._coords).norm();
     };
 
     /**
@@ -189,22 +225,24 @@ class CartesianMoment : virtual public IMoment {
   protected:
     std::unique_ptr<CartesianCoordinates> _coordinates;
     std::unique_ptr<CartesianDirection> _direction;
-    regnum _material_number;
+    std::shared_ptr<Material> _material;
 
   public:
     CartesianMoment(
-        const CartesianCoordinates &coordinates, const CartesianDirection &direction, regnum material_number
+        const CartesianCoordinates &coordinates,
+        const CartesianDirection &direction,
+        std::shared_ptr<Material> material
     ) noexcept
-        : _direction(std::make_unique<CartesianDirection>(direction)),
-          _coordinates(std::make_unique<CartesianCoordinates>(coordinates)),
-          _material_number(material_number) {};
+        : _coordinates(std::make_unique<CartesianCoordinates>(coordinates)),
+          _direction(std::make_unique<CartesianDirection>(direction)),
+          _material(material) {};
 
     CartesianMoment(
-        CartesianCoordinates &&coordinates, CartesianDirection &&direction, regnum material_number
+        CartesianCoordinates &&coordinates, CartesianDirection &&direction, std::shared_ptr<Material> material
     ) noexcept
-        : _direction(std::make_unique<CartesianDirection>(std::move(direction))),
-          _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))),
-          _material_number(material_number) {};
+        :  _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))),
+         _direction(std::make_unique<CartesianDirection>(std::move(direction))),
+          _material(std::move(material)) {};
 
     /**
      * Получить вектор момента
@@ -217,15 +255,14 @@ class CartesianMoment : virtual public IMoment {
     virtual CartesianCoordinates &getCoordinates() override { return *_coordinates; };
 
     virtual std::string __str__() const override {
-        return _direction->__str__() + "\t" + _coordinates->__str__() + "\t" +
-               std::to_string(_material_number);
+        return  _coordinates->__str__() + "\t" + _direction->__str__() + "\t" + _material->__str__();
     };
     virtual std::string __repr__() const override {
         return std::format(
-            "CartesianMoment(coordinates={}, direction={}, material_number={})",
+            "CartesianMoment(coordinates={}, direction={}, material={})",
             _coordinates->__repr__(),
             _direction->__repr__(),
-            _material_number
+            _material->__repr__()
         );
     };
 };
@@ -249,47 +286,16 @@ class ISpin : virtual public IMoment {
 class CartesianSpin : public CartesianMoment, public ISpin { // CartesianSpin + ISpin diamond
   public:
     CartesianSpin(
-        const CartesianCoordinates &coordinates, const CartesianDirection &direction, regnum material_number
+        const CartesianCoordinates &coordinates,
+        const CartesianDirection &direction,
+        std::shared_ptr<Material> material
     ) noexcept
-        : CartesianMoment(coordinates, direction, material_number) {};
+        : CartesianMoment(coordinates, direction, material) {};
 
     CartesianSpin(
-        CartesianCoordinates &&coordinates, CartesianDirection &&direction, regnum material_number
+        CartesianCoordinates &&coordinates, CartesianDirection &&direction, std::shared_ptr<Material> material
     ) noexcept
-        : CartesianMoment(coordinates, direction, material_number) {};
-};
-
-/**
- * (Интерфейс) Базовая единица абстракции - свойства материала.
- * Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.
- */
-class IMaterial {
-  protected:
-    IMaterial() = default;
-
-  public:
-    virtual ~IMaterial() = default;
-
-    virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
-};
-
-/**
- * Свойства магнитного материала (ферромагнетиков, etc.)
- */
-class MagneticMaterial : public IMaterial {
-  protected:
-    double exchange_constant_J;
-
-  public:
-    MagneticMaterial(double _exchange_constant_J) : exchange_constant_J(_exchange_constant_J) {};
-
-    virtual std::string __str__() const override {
-        return std::format("(exchange: {:.3f})", this->exchange_constant_J);
-    };
-    virtual std::string __repr__() const override {
-        return std::format("MagneticMaterial(exchange_constant_J={:.3f}", this->exchange_constant_J);
-    };
+        : CartesianMoment(coordinates, direction, material) {};
 };
 
 class IRegion {
@@ -328,8 +334,10 @@ inline void pyBindTypes(py::module_ &module) {
         .def(py::init<>())
         .def_readonly("name", &SphericalCoordSystem::name);
 
-    py::class_<IMaterial, std::shared_ptr<IMaterial>>(module, "IMaterial")
-        BIND_STR_REPR(IMaterial)
+    py::class_<Material, std::shared_ptr<Material>>(module, "Material")
+        BIND_STR_REPR(Material)
+        .def(py::init<regnum, double>(), py::arg("material_number"), py::arg("exchange_constant_J"))
+        .def("get_number", &Material::getNumber)
         .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
                  "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";
 
@@ -343,7 +351,8 @@ inline void pyBindTypes(py::module_ &module) {
         .doc() = "(Интерфейс) Базовая единица абстракции - направление, вектор.\n"
                  "Описывает направление сил, движения, etc.";
 
-    py::class_<IMoment, std::shared_ptr<IMoment>>(module, "IMoment") BIND_STR_REPR(IMoment)
+    py::class_<IMoment, std::shared_ptr<IMoment>>(module, "IMoment")
+        BIND_STR_REPR(IMoment)
         .def(
             "get_direction",
             &IMoment::getDirection,
@@ -364,10 +373,6 @@ inline void pyBindTypes(py::module_ &module) {
         .doc() = "(Интерфейс) Структурная единица абстракции. Спиновый момент.\n"
                  "ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.";
 
-    py::class_<MagneticMaterial, IMaterial, std::shared_ptr<MagneticMaterial>>(module, "MagneticMaterial")
-        .def(py::init<double>(), py::arg("_exchange_constant_J"))
-        .doc() = "Свойства магнитного материала (ферромагнетиков, etc.)";
-
     py::class_<CartesianCoordinates, ICoordinates>(module, "CartesianCoordinates")
         .def(
             py::init<double, double, double>(),
@@ -386,8 +391,10 @@ inline void pyBindTypes(py::module_ &module) {
 
     py::class_<CartesianMoment, IMoment, std::shared_ptr<CartesianMoment>>(module, "CartesianMoment")
         .def(
-            py::init<const CartesianCoordinates &, const CartesianDirection &, regnum>(),
-            py::arg("coordinates"), py::arg("direction"), py::arg("material_number")
+            py::init([](const CartesianCoordinates &coords, const CartesianDirection &dir, Material& mat) {
+                return new CartesianMoment(coords, dir, std::make_shared<Material>(mat));
+            }),
+            py::arg("coordinates"), py::arg("direction"), py::arg("material")
         )
         .def("get_direction", &CartesianMoment::getDirection, py::return_value_policy::reference)
         .def("get_coordinates", &CartesianMoment::getCoordinates, py::return_value_policy::reference)
@@ -395,8 +402,10 @@ inline void pyBindTypes(py::module_ &module) {
 
     py::class_<CartesianSpin, CartesianMoment, ISpin, std::shared_ptr<CartesianSpin>>(module, "CartesianSpin")
         .def(
-            py::init<const CartesianCoordinates &, const CartesianDirection &, regnum>(),
-            py::arg("coordinates"), py::arg("direction"), py::arg("material_number")
+            py::init([](const CartesianCoordinates &coords, const CartesianDirection &dir, Material& mat) {
+                return new CartesianSpin(coords, dir, std::make_shared<Material>(mat));
+            }),
+            py::arg("coordinates"), py::arg("direction"), py::arg("material")
         )
         .doc() = "Спиновый момент в декартовых координатах. ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.";
 

@@ -10,11 +10,15 @@
  * обсчитываемых параметров. Может состоять из разных участков разной точности.
  */
 
+#include "registries.hpp"
 #include "types.hpp"
 
 #include <memory>
+#include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace py = pybind11;
 
@@ -26,12 +30,32 @@ namespace spindynapy {
 class IGeometry {
   protected:
     IGeometry() = default;
+    virtual bool hasInNeighborsCanche(size_t index, double cutoff_radius) const {
+        throw std::logic_error("Method hasInNeighborsCanche Not implemented");
+    };
+    virtual std::vector<size_t> getFromNeighborsCache(size_t index, double cutoff_radius) const{
+        throw std::logic_error("Method getFromNeighborsCache Not implemented");
+    };
+    virtual void updateNeighborsCache(size_t index, double cutoff_radius, std::vector<size_t> neighbors){
+        throw std::logic_error("Method updateNeighborsCache Not implemented");
+    };
+    virtual void clearNeighborsCache(size_t index, double cutoff_radius){
+        throw std::logic_error("Method clearNeighborsCache Not implemented");
+    };
+    virtual void clearAllNeighborsCache(){
+        throw std::logic_error("Method clearAllNeighborsCache Not implemented");
+    };
 
   public:
     virtual ~IGeometry() = default;
 
     virtual std::string __str__() const { return nullptr; };
     virtual std::string __repr__() const { return nullptr; };
+
+    virtual IMoment &operator[](size_t index) { throw std::logic_error("Operator [index] Not implemented"); };
+    virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) {
+        throw std::logic_error("Method getNeighbors Not implemented");
+    };
     virtual size_t __len__() const { throw std::logic_error("Method __len__ Not implemented"); };
 };
 
@@ -41,12 +65,28 @@ class IGeometry {
 class CartesianGeometry : public IGeometry {
   protected:
     std::vector<std::shared_ptr<CartesianMoment>> _moments;
+    std::map<std::pair<size_t, double>, std::vector<size_t>> _neighbors_cache;
+
+    virtual bool hasInNeighborsCanche(size_t index, double cutoff_radius) const override {
+        return _neighbors_cache.contains(std::make_pair(index, cutoff_radius));
+    };
+    virtual std::vector<size_t> getFromNeighborsCache(size_t index, double cutoff_radius) const override {
+        return _neighbors_cache.at(std::make_pair(index, cutoff_radius));
+    };
+    virtual void
+    updateNeighborsCache(size_t index, double cutoff_radius, std::vector<size_t> neighbors) override {
+        _neighbors_cache[std::make_pair(index, cutoff_radius)] = neighbors;
+    };
+    virtual void clearNeighborsCache(size_t index, double cutoff_radius) override {
+        _neighbors_cache.erase(std::make_pair(index, cutoff_radius));
+    };
+    virtual void clearAllNeighborsCache() override { _neighbors_cache.clear(); };
 
   public:
     CartesianGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments) : _moments(moments) {};
     CartesianGeometry(std::vector<std::shared_ptr<CartesianMoment>> &&moments)
         : _moments(std::move(moments)) {}
-    CartesianGeometry(const Eigen::MatrixXd &moments) {
+    CartesianGeometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
         if (moments.cols() < 7) {
             throw std::invalid_argument("Expected 7 columns: [x, y, z, sx, sy, sz, material]");
         };
@@ -55,9 +95,35 @@ class CartesianGeometry : public IGeometry {
             _moments.emplace_back(std::make_shared<CartesianMoment>(
                 CartesianCoordinates(moments(i, 0), moments(i, 1), moments(i, 2)),
                 CartesianDirection(moments(i, 3), moments(i, 4), moments(i, 5)),
-                regnum(moments(i, 6))
+                material_registry.getElementShared(static_cast<regnum>(moments(i, 6)))
             ));
         }
+    };
+
+    virtual CartesianMoment &operator[](size_t index) override { return *this->_moments[index]; };
+
+    virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) override {
+        if (cutoff_radius <= 0) return {};
+
+        // проверяем кэш
+        auto cache_key = std::make_pair(index, cutoff_radius);
+        if (this->hasInNeighborsCanche(index, cutoff_radius)) {
+            return this->getFromNeighborsCache(index, cutoff_radius);
+        }
+
+        // иначе считаем
+        std::vector<size_t> neighbors;
+        const auto &target_coords = _moments[index]->getCoordinates();
+
+        for (size_t i = 0; i < _moments.size(); ++i) {
+            const double distance_sq = target_coords.getDistanceFrom(_moments[i]->getCoordinates());
+            if (distance_sq <= cutoff_radius) neighbors.push_back(i);
+        }
+
+        // сохраняем в кэш
+        this->updateNeighborsCache(index, cutoff_radius, neighbors);
+
+        return neighbors;
     };
 
     virtual std::string __str__() const override {
@@ -96,6 +162,8 @@ inline void pyBindGeometries(py::module_ &module) {
         .def("__str__", &IGeometry::__str__)
         .def("__repr__", &IGeometry::__repr__)
         .def("__len__", &IGeometry::__len__)
+        .def("get_neighbors", &IGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
+        .def("__getitem__", &IGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
         .doc() = "Базовый интерфейс геометрии";
 
     py::class_<CartesianGeometry, IGeometry, std::shared_ptr<CartesianGeometry>>(module, "CartesianGeometry")
@@ -104,8 +172,8 @@ inline void pyBindGeometries(py::module_ &module) {
             py::arg("moments")
         )
         .def(
-            py::init<const Eigen::MatrixXd &>(),
-            py::arg("moments")
+            py::init<const Eigen::MatrixXd &, MaterialRegistry&>(),
+            py::arg("moments"), py::arg("material_registry")
         )
         .doc() = "Простая геометрия, задаваемая в декартовой системе координат";
 

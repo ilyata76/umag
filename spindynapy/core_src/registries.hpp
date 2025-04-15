@@ -15,13 +15,14 @@
 #include <memory>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <stdexcept>
 #include <string>
 
 namespace py = pybind11;
 
 namespace spindynapy {
 
-template <typename Element> using RegistryContainer = std::map<int, std::shared_ptr<Element>>;
+template <typename Element> using RegistryContainer = std::map<regnum, std::shared_ptr<Element>>;
 
 /**
  * Регистр-контейнер
@@ -36,21 +37,40 @@ template <typename Element> class Registry {
     virtual ~Registry() = default;
 
     virtual std::string __str__() const { throw std::logic_error("Method __Str__ Not implemented"); };
-    virtual std::string __repr__() const { throw std::logic_error("Method __Repr__ Not implemented");};
+    virtual std::string __repr__() const { throw std::logic_error("Method __Repr__ Not implemented"); };
 
-    // virtual void registerElement(regnum, ...) { throw std::logic_error("Method registerMaterial Not implemented"); };
-    // virtual void changeElement(regnum, ...) { throw std::logic_error("Method changeMaterial Not implemented"); };
-    // virtual Element &getElement(regnum) { throw std::logic_error("Method getMaterial Not implemented"); };
-    // virtual void removeElement(regnum) { throw std::logic_error("Method removeMaterial Not implemented"); };
+    virtual Element &getElement(regnum number) {
+        if (this->_container.contains(number))
+            return *this->_container.at(number);
+        else
+            throw std::invalid_argument(std::format(
+                "Такой элемент (<{}> {}) не был зарегистрирован в регистре", typeid(this).name(), number
+            ));
+    };
+
+    std::shared_ptr<Element> getElementShared(regnum number) {
+        if (this->_container.contains(number))
+            return this->_container.at(number);
+        else
+            throw std::invalid_argument(std::format(
+                "Такой элемент (<{}> {}) не был зарегистрирован в регистре", typeid(this).name(), number
+            ));
+    }
 
     virtual bool isEmpty() { return _container.empty(); };
 };
 
-using MaterialRegistry = Registry<IMaterial>;
+using MaterialRegistry = Registry<Material>;
 using RegionRegistry = Registry<IRegion>;
 using InteractionRegistry = Registry<IInteraction>;
 
 }; // namespace spindynapy
+
+#define BUILD_REGISTRY_TEMPLATE_METHODS(cls)                                                                 \
+    .def("__str__", &cls::__str__)                                                                           \
+        .def("__repr__", &cls::__repr__)                                                                     \
+        .def("get_element", &cls::getElement, py::arg("number"), py::return_value_policy::reference)         \
+        .def("is_empty", &cls::isEmpty, "true, если в регистре нет ни одного элемента")
 
 inline void pyBindRegistries(py::module_ &module) {
     using namespace spindynapy;
@@ -63,24 +83,18 @@ inline void pyBindRegistries(py::module_ &module) {
                    " Реализуются для паттерна \"легковес\". Живут всю программу.";
 
     py::class_<MaterialRegistry, std::shared_ptr<MaterialRegistry>>(module, "MaterialRegistry")
-        .def(py::init<RegistryContainer<IMaterial>>(), py::arg("container"))
-        .def("__str__", &MaterialRegistry::__str__)
-        .def("__repr__", &MaterialRegistry::__repr__)
-        .def("is_empty", &MaterialRegistry::isEmpty, "true, если в регистре нет ни одного элемента")
+        .def(py::init<RegistryContainer<Material>>(), py::arg("container"))
+        BUILD_REGISTRY_TEMPLATE_METHODS(MaterialRegistry)
         .doc() = "Интерфейс для регистра-контейнера для материалов";
 
     py::class_<RegionRegistry, std::shared_ptr<RegionRegistry>>(module, "RegionRegistry")
         .def(py::init<RegistryContainer<IRegion>>(), py::arg("container"))
-        .def("__str__", &RegionRegistry::__str__)
-        .def("__repr__", &RegionRegistry::__repr__)
-        .def("is_empty", &RegionRegistry::isEmpty, "true, если в регистре нет ни одного элемента")
+        BUILD_REGISTRY_TEMPLATE_METHODS(RegionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных областей материалов";
 
     py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(module, "InteractionRegistry")
         .def(py::init<RegistryContainer<IInteraction>>(), py::arg("container"))
-        .def("__str__", &InteractionRegistry::__str__)
-        .def("__repr__", &InteractionRegistry::__repr__)
-        .def("is_empty", &InteractionRegistry::isEmpty, "true, если в регистре нет ни одного элемента")
+        BUILD_REGISTRY_TEMPLATE_METHODS(InteractionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных взаимодействий";
 
     // clang-format on
