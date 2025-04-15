@@ -21,7 +21,6 @@
 #include <pybind11/stl.h>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
 
 namespace py = pybind11;
 
@@ -33,94 +32,33 @@ namespace spindynapy {
 
 typedef std::vector<Eigen::Vector3d> eff_f;
 
-class ISolver {
+template <CoordSystemConcept CoordSystem> class ISolver {
   protected:
-    virtual std::string getSolverName() { throw std::logic_error("Method getSolverName Not implemented"); };
-    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) {
-        throw std::logic_error("Method updateMomentsCartesian Not implemented");
-    };
-    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) {
-        throw std::logic_error("Method updateMomentsSpherical Not implemented");
-    };
-
-  public:
     ISolver() = default;
-    virtual ~ISolver() {};
-
-    virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
-
-    virtual void updateMoments(IGeometry &geometry, eff_f effective_fields, double dt) {
-        throw std::logic_error("Method step Not implemented");
-    };
+  public:
+    virtual ~ISolver() = default;
+    virtual void updateMoments(IGeometry<CoordSystem> &geometry, eff_f effective_fields, double dt) {
+        throw std::logic_error("The solving Not implemented");
+    }
 };
 
-/**
- * SOLVER может реализовываться в разных координатных системах.
- * При построении из шаблона, через if constexpr, будет разрешаться,
- * какой метод будет вызывать солвер (для разных координатных систем = разные алгоритмы и разные методы
- * типов).
- *
- * Зато на уровне симулятора неважно, какой шаблон подставляется, если есть метод step().
- */
-template <typename CoordSystem> class AbstractSolver : public ISolver {
+class CartesianSolver : public ISolver<CartesianCoordSystem> {
   protected:
-    virtual std::string getSolverName() override {
-        throw std::logic_error("Method getSolverName Not implemented");
-    };
-    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) override {
-        throw std::logic_error(
-            "The solving via " + getSolverName() + " is not implemented in the Cartesian coordinate system"
-        );
-    };
-    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) override {
-        throw std::logic_error(
-            "The solving via " + getSolverName() + " is not implemented in the Spherical coordinate system"
-        );
-    };
-
+    CartesianSolver() = default;
   public:
-    AbstractSolver() = default;
-    virtual ~AbstractSolver() = default;
-
-    virtual void updateMoments(IGeometry &geometry, eff_f effective_fields, double dt)
-        override { // метод разрешает ещё при препроцессинге какой
-                   // метод вызвать для текущей реализации шаблона
-        if constexpr (std::is_same_v<CoordSystem, CartesianCoordSystem>) {
-            return this->updateMomentsCartesian(geometry, effective_fields, dt);
-        } else if constexpr (std::is_same_v<CoordSystem, SphericalCoordSystem>) {
-            return this->updateMomentsSpherical(geometry, effective_fields, dt);
-        } else {
-            throw std::logic_error("The solving is not implemented with this coords system");
-        }
+    virtual void
+    updateMoments(IGeometry<CartesianCoordSystem> &geometry, eff_f effective_fields, double dt) override {
+        throw std::logic_error("The solving Not implemented");
     };
 };
 
-// по сути - базовый абстрактный солвер, в декартовых координатах
-using CartesianAbstractSolver = AbstractSolver<CartesianCoordSystem>;
-// не реализован, создан для демонстрации абстракции солвера
-using SphericalAbstractSolver = AbstractSolver<SphericalCoordSystem>;
-
-template <typename CoordSystem> class LLGSolver : public AbstractSolver<CoordSystem> {
-  protected: // todo: стратегия численного исчисления (эйлер, хойн и т.д.)
-    virtual std::string getSolverName() override { return "LLG Solver"; };
-    virtual void updateMomentsCartesian(IGeometry &geometry, eff_f effective_fields, double dt) override {
-        std::cout << "AMOGUS\0";
-        return;
-    }
-    virtual void updateMomentsSpherical(IGeometry &geometry, eff_f effective_fields, double dt) override {
-        std::cout << "SPHERICAL AMOGUS\0";
-        return;
-    }
-
+class CartesianLLGSolver : public CartesianSolver {
   public:
-    LLGSolver() {};
+    virtual void
+    updateMoments(IGeometry<CartesianCoordSystem> &geometry, eff_f effective_fields, double dt) override {
+        std::cout << "AMOGUS\n";
+    };
 };
-
-// солвер Ландау-Лифшица-Гильберта в декартовых координатах (классический алгоритм)
-using CartesianLLGSolver = LLGSolver<CartesianCoordSystem>;
-// не реализован, создан для демонстрации абстракции солвера
-using SphericalLLGSolver = LLGSolver<SphericalCoordSystem>;
 
 }; // namespace spindynapy
 
@@ -134,25 +72,13 @@ inline void pyBindSolvers(py::module_ &module) {
                    "или любого другого прогрессирования системы в зависимости от\n"
                    "предоставленных внешних параметров.";
 
-    py::class_<ISolver, std::shared_ptr<ISolver>>(module, "ISolver")
-        .def("__str__", &ISolver::__str__)
-        .def("__repr__", &ISolver::__repr__)
-        .def("update_moments", &ISolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
-        .doc() = "Базовый интерфейс решателя-интегратора";
-
-    py::class_<CartesianAbstractSolver, ISolver, std::shared_ptr<CartesianAbstractSolver>>(module, "CartesianAbstractSolver")
+    py::class_<CartesianSolver, std::shared_ptr<CartesianSolver>>(module, "CartesianAbstractSolver")
+        .def("update_moments", &CartesianSolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
         .doc() = "по сути - базовый абстрактный солвер, в декартовых координатах";
 
-    py::class_<SphericalAbstractSolver, ISolver, std::shared_ptr<SphericalAbstractSolver>>(module, "SphericalAbstractSolver")
-        .doc() = "не реализован, создан для демонстрации абстракции солвера";
-
-    py::class_<CartesianLLGSolver, CartesianAbstractSolver, std::shared_ptr<CartesianLLGSolver>>(module, "CartesianLLGSolver")
+    py::class_<CartesianLLGSolver, CartesianSolver, std::shared_ptr<CartesianLLGSolver>>(module, "CartesianLLGSolver")
         .def(py::init<>())
         .doc() = "солвер Ландау-Лифшица-Гильберта в декартовых координатах (классический алгоритм)";
-
-    py::class_<SphericalLLGSolver, SphericalAbstractSolver, std::shared_ptr<SphericalLLGSolver>>(module, "SphericalLLGSolver")
-        .def(py::init<>())
-        .doc() = "не реализован, создан для демонстрации абстракции солвера";
 
     // clang-format on
 }

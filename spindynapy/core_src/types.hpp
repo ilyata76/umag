@@ -23,13 +23,6 @@ namespace py = pybind11;
 
 namespace spindynapy {
 
-struct CartesianCoordSystem {
-    const char *name = "CartesianCoordSystem";
-};
-struct SphericalCoordSystem {
-    const char *name = "SphericalCoordSystem";
-};
-
 typedef short regnum;
 
 /**
@@ -59,29 +52,31 @@ class Material {
     }
 };
 
-/**
- * (Интерфейс) Базовая единица абстракции - координаты.
- * Описывает расположение в пространстве объекта.
- */
-class ICoordinates {
+class Region {
   protected:
-    ICoordinates() = default;
+    double _accuracy;
 
   public:
-    virtual ~ICoordinates() {};
-
-    virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
-
-    virtual double getDistanceFrom(const ICoordinates &other) const {
-        throw std::logic_error("Not implemented");
-    };
+    Region(double accuracy) : _accuracy(accuracy) {};
 };
+
+// Собираем концепт шаблона:
+// классы будут как бы независимые. Склейка по координатным системам только через шаблоны
+
+template <typename CoordSystem>
+concept CoordSystemConcept = requires {
+    typename CoordSystem::Moment;
+    typename CoordSystem::Coordinates;
+    typename CoordSystem::Direction;
+    { CoordSystem {}.name } -> std::convertible_to<const char *>;
+};
+
+struct CoordSystem {};
 
 /**
  * Декартовые координаты
  */
-class CartesianCoordinates : public ICoordinates {
+class CartesianCoordinates {
   protected:
     Eigen::Vector3d _coords;
 
@@ -89,26 +84,19 @@ class CartesianCoordinates : public ICoordinates {
     CartesianCoordinates(double x, double y, double z) noexcept : _coords(x, y, z) {};
     CartesianCoordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
 
-    virtual std::string __str__() const override {
+    virtual std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _coords(0), _coords(1), _coords(2));
     };
-    virtual std::string __repr__() const override {
+    virtual std::string __repr__() const {
         return std::format(
             "CartesianCoordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2)
         );
     };
 
-    virtual double getDistanceFrom(const ICoordinates &other) const override {
-        const auto &cart = dynamic_cast<const CartesianCoordinates &>(other);
-        return (this->_coords - cart._coords).norm();
+    virtual double getDistanceFrom(const CartesianCoordinates &other) const {
+        return (this->_coords - other._coords).norm();
     };
 
-    /**
-     * КОМПРОМИСС (нарушение полиморфности):
-     *      в солверах с темплейтами используется через if constexpr
-     *   Иначе - сложно поддерживать множество ветвей наследования.
-     *   + невиртуальный - быстрее.
-     */
     void setCoordinates(double x, double y, double z) {
         // TODO: рассмотреть возможность setCoordinates(params), а дальше идентифицировать по номерам
         _coords[0] = x;
@@ -116,12 +104,7 @@ class CartesianCoordinates : public ICoordinates {
         _coords[2] = z;
         return;
     }
-    /**
-     * КОМПРОМИСС (нарушение полиморфности):
-     *      в солверах с темплейтами используется через if constexpr
-     *   Иначе - сложно поддерживать множество ветвей наследования.
-     *   + невиртуальный - быстрее.
-     */
+
     void setCoordinates(Eigen::Vector3d coords) {
         _coords[0] = coords[0];
         _coords[1] = coords[1];
@@ -131,24 +114,9 @@ class CartesianCoordinates : public ICoordinates {
 };
 
 /**
- * (Интерфейс) Базовая единица абстракции - направление, вектор.
- * Описывает направление сил, движения, etc.
- */
-class IDirection {
-  protected:
-    IDirection() = default;
-
-  public:
-    virtual ~IDirection() {};
-
-    virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
-};
-
-/**
  * Вектор в декартовых координатах
  */
-class CartesianDirection : public IDirection {
+class CartesianDirection {
   protected:
     Eigen::Vector3d _vector;
 
@@ -156,33 +124,22 @@ class CartesianDirection : public IDirection {
     CartesianDirection(double x, double y, double z) noexcept : _vector(x, y, z) {};
     CartesianDirection(const Eigen::Vector3d &vector) noexcept : _vector(vector) {};
 
-    virtual std::string __str__() const override {
+    virtual std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _vector(0), _vector(1), _vector(2));
     };
-    virtual std::string __repr__() const override {
+    virtual std::string __repr__() const {
         return std::format(
             "CartesianDirection(x={:.3f}, y={:.3f}, z={:.3f})", _vector(0), _vector(1), _vector(2)
         );
     };
 
-    /**
-     * КОМПРОМИСС (нарушение полиморфности):
-     *      в солверах с темплейтами используется через if constexpr
-     *   Иначе - сложно поддерживать множество ветвей наследования.
-     *   + невиртуальный - быстрее.
-     */
     void setDirection(double x, double y, double z) {
         _vector[0] = x;
         _vector[1] = y;
         _vector[2] = z;
         return;
     }
-    /**
-     * КОМПРОМИСС (нарушение полиморфности):
-     *      в солверах с темплейтами используется через if constexpr
-     *   Иначе - сложно поддерживать множество ветвей наследования.
-     *   + невиртуальный - быстрее.
-     */
+
     void setDirection(Eigen::Vector3d vector) {
         _vector[0] = vector[0];
         _vector[1] = vector[1];
@@ -191,37 +148,7 @@ class CartesianDirection : public IDirection {
     }
 };
 
-/**
- * (Интерфейс) Структурная базовая единица абстракции - момент.
- * Магнитный, квантово-механический, etc.
- * ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.
- */
-class IMoment {
-  protected:
-    IMoment() = default;
-
-  public:
-    virtual ~IMoment() {};
-
-    /**
-     * Получить вектор момента
-     */
-    virtual IDirection &getDirection() { throw std::logic_error("Not implemented"); };
-
-    /**
-     * Получить расположение момента
-     */
-    virtual ICoordinates &getCoordinates() { throw std::logic_error("Not implemented"); };
-
-    virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
-};
-
-/**
- * Момент в декартовых координатах.
- * ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.
- */
-class CartesianMoment : virtual public IMoment {
+class CartesianMoment {
   protected:
     std::unique_ptr<CartesianCoordinates> _coordinates;
     std::unique_ptr<CartesianDirection> _direction;
@@ -240,24 +167,24 @@ class CartesianMoment : virtual public IMoment {
     CartesianMoment(
         CartesianCoordinates &&coordinates, CartesianDirection &&direction, std::shared_ptr<Material> material
     ) noexcept
-        :  _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))),
-         _direction(std::make_unique<CartesianDirection>(std::move(direction))),
+        : _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))),
+          _direction(std::make_unique<CartesianDirection>(std::move(direction))),
           _material(std::move(material)) {};
 
     /**
      * Получить вектор момента
      */
-    virtual CartesianDirection &getDirection() override { return *_direction; };
+    virtual CartesianDirection &getDirection() { return *_direction; };
 
     /**
      * Получить расположение момента
      */
-    virtual CartesianCoordinates &getCoordinates() override { return *_coordinates; };
+    virtual CartesianCoordinates &getCoordinates() { return *_coordinates; };
 
-    virtual std::string __str__() const override {
-        return  _coordinates->__str__() + "\t" + _direction->__str__() + "\t" + _material->__str__();
+    virtual std::string __str__() const {
+        return _coordinates->__str__() + "\t" + _direction->__str__() + "\t" + _material->__str__();
     };
-    virtual std::string __repr__() const override {
+    virtual std::string __repr__() const {
         return std::format(
             "CartesianMoment(coordinates={}, direction={}, material={})",
             _coordinates->__repr__(),
@@ -267,51 +194,22 @@ class CartesianMoment : virtual public IMoment {
     };
 };
 
-/**
- * (Интерфейс) Структурная единица абстракции
- * Спиновый момент. ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.
- */
-class ISpin : virtual public IMoment {
-  protected:
-    ISpin() = default;
-
-  public:
-    virtual ~ISpin() = default;
+struct CartesianCoordSystem : public CoordSystem {
+    using Moment = CartesianMoment;
+    using Coordinates = CartesianCoordinates;
+    using Direction = CartesianDirection;
+    const char *name = "CartesianCoordSystem";
 };
 
-/**
- * Спиновый момент в декартовых координатах.
- * ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.
- */
-class CartesianSpin : public CartesianMoment, public ISpin { // CartesianSpin + ISpin diamond
-  public:
-    CartesianSpin(
-        const CartesianCoordinates &coordinates,
-        const CartesianDirection &direction,
-        std::shared_ptr<Material> material
-    ) noexcept
-        : CartesianMoment(coordinates, direction, material) {};
+class SphericalMoment {};
+class SphericalCoordinates {};
+class SphericalDirection {};
 
-    CartesianSpin(
-        CartesianCoordinates &&coordinates, CartesianDirection &&direction, std::shared_ptr<Material> material
-    ) noexcept
-        : CartesianMoment(coordinates, direction, material) {};
-};
-
-class IRegion {
-  protected:
-    IRegion() = default;
-
-  public:
-    virtual ~IRegion() = default;
-};
-
-class AccuracyRegion : public IRegion {
-  protected:
-    double _accuracy;
-
-  public:
-    AccuracyRegion(double accuracy) : _accuracy(accuracy) {};
+struct SphericalCoordSystem : public CoordSystem {
+    using Moment = SphericalMoment;
+    using Coordinates = SphericalCoordinates;
+    using Direction = SphericalDirection;
+    const char *name = "SphericalCoordSystem";
 };
 
 }; // namespace spindynapy
@@ -341,55 +239,25 @@ inline void pyBindTypes(py::module_ &module) {
         .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
                  "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";
 
-    py::class_<ICoordinates>(module, "ICoordinates")
-        BIND_STR_REPR(ICoordinates)
-        .doc() = "(Интерфейс) Базовая единица абстракции - координаты.\n"
-                 "Описывает расположение в пространстве объекта.";
-
-    py::class_<IDirection>(module, "IDirection")
-        BIND_STR_REPR(IDirection)
-        .doc() = "(Интерфейс) Базовая единица абстракции - направление, вектор.\n"
-                 "Описывает направление сил, движения, etc.";
-
-    py::class_<IMoment, std::shared_ptr<IMoment>>(module, "IMoment")
-        BIND_STR_REPR(IMoment)
-        .def(
-            "get_direction",
-            &IMoment::getDirection,
-            py::return_value_policy::reference,
-            py::doc("Получить вектор момента")
-        )
-        .def(
-            "get_coordinates",
-            &IMoment::getCoordinates,
-            py::return_value_policy::reference,
-            py::doc("Получить расположение момента")
-        )
-        .doc() = "(Интерфейс) Структурная базовая единица абстракции - момент.\n"
-                 "Магнитный, квантово-механический, etc."
-                 "ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.";
-
-    py::class_<ISpin, IMoment, std::shared_ptr<ISpin>>(module, "ISpin")
-        .doc() = "(Интерфейс) Структурная единица абстракции. Спиновый момент.\n"
-                 "ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.";
-
-    py::class_<CartesianCoordinates, ICoordinates>(module, "CartesianCoordinates")
+    py::class_<CartesianCoordinates>(module, "CartesianCoordinates")
         .def(
             py::init<double, double, double>(),
             py::arg("x"), py::arg("y"), py::arg("z")
         )
         .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"))
+        BIND_STR_REPR(CartesianCoordinates)
         .doc() = "Декартовые координаты";
 
-    py::class_<CartesianDirection, IDirection>(module, "CartesianDirection")
+    py::class_<CartesianDirection>(module, "CartesianDirection")
         .def(
             py::init<double, double, double>(),
             py::arg("x"), py::arg("y"), py::arg("z")
         )
         .def(py::init<const Eigen::Vector3d &>(), py::arg("vector"))
-        .doc() = "TODO";
+        BIND_STR_REPR(CartesianDirection)
+        .doc() = "Направление в декартовых координатах";
 
-    py::class_<CartesianMoment, IMoment, std::shared_ptr<CartesianMoment>>(module, "CartesianMoment")
+    py::class_<CartesianMoment, std::shared_ptr<CartesianMoment>>(module, "CartesianMoment")
         .def(
             py::init([](const CartesianCoordinates &coords, const CartesianDirection &dir, Material& mat) {
                 return new CartesianMoment(coords, dir, std::make_shared<Material>(mat));
@@ -398,21 +266,10 @@ inline void pyBindTypes(py::module_ &module) {
         )
         .def("get_direction", &CartesianMoment::getDirection, py::return_value_policy::reference)
         .def("get_coordinates", &CartesianMoment::getCoordinates, py::return_value_policy::reference)
+        BIND_STR_REPR(CartesianMoment)
         .doc() = "TODO";
 
-    py::class_<CartesianSpin, CartesianMoment, ISpin, std::shared_ptr<CartesianSpin>>(module, "CartesianSpin")
-        .def(
-            py::init([](const CartesianCoordinates &coords, const CartesianDirection &dir, Material& mat) {
-                return new CartesianSpin(coords, dir, std::make_shared<Material>(mat));
-            }),
-            py::arg("coordinates"), py::arg("direction"), py::arg("material")
-        )
-        .doc() = "Спиновый момент в декартовых координатах. ХРАНИТ В СЕБЕ КООРДИНАТЫ И ВЕКТОР.";
-
-    py::class_<IRegion>(module, "IRegion")
-        .doc() = "TODO";
-
-    py::class_<AccuracyRegion, IRegion>(module, "AccuracyRegion")
+    py::class_<Region>(module, "Region")
         .def(py::init<double>(), py::arg("accuracy"))
         .doc() = "TODO";
 

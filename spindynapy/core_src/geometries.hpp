@@ -27,22 +27,22 @@ namespace spindynapy {
 /**
  * Базовый интерфейс геометрии
  */
-class IGeometry {
+template <CoordSystemConcept CoordSystem> class IGeometry {
   protected:
     IGeometry() = default;
     virtual bool hasInNeighborsCanche(size_t index, double cutoff_radius) const {
         throw std::logic_error("Method hasInNeighborsCanche Not implemented");
     };
-    virtual std::vector<size_t> getFromNeighborsCache(size_t index, double cutoff_radius) const{
+    virtual std::vector<size_t> getFromNeighborsCache(size_t index, double cutoff_radius) const {
         throw std::logic_error("Method getFromNeighborsCache Not implemented");
     };
-    virtual void updateNeighborsCache(size_t index, double cutoff_radius, std::vector<size_t> neighbors){
+    virtual void updateNeighborsCache(size_t index, double cutoff_radius, std::vector<size_t> neighbors) {
         throw std::logic_error("Method updateNeighborsCache Not implemented");
     };
-    virtual void clearNeighborsCache(size_t index, double cutoff_radius){
+    virtual void clearNeighborsCache(size_t index, double cutoff_radius) {
         throw std::logic_error("Method clearNeighborsCache Not implemented");
     };
-    virtual void clearAllNeighborsCache(){
+    virtual void clearAllNeighborsCache() {
         throw std::logic_error("Method clearAllNeighborsCache Not implemented");
     };
 
@@ -52,7 +52,9 @@ class IGeometry {
     virtual std::string __str__() const { return nullptr; };
     virtual std::string __repr__() const { return nullptr; };
 
-    virtual IMoment &operator[](size_t index) { throw std::logic_error("Operator [index] Not implemented"); };
+    virtual CoordSystem::Moment &operator[](size_t index) {
+        throw std::logic_error("Operator [index] Not implemented");
+    };
     virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) {
         throw std::logic_error("Method getNeighbors Not implemented");
     };
@@ -62,7 +64,7 @@ class IGeometry {
 /**
  * Простая геометрия, задаваемая в декартовой системе координат
  */
-class CartesianGeometry : public IGeometry {
+class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
   protected:
     std::vector<std::shared_ptr<CartesianMoment>> _moments;
     std::map<std::pair<size_t, double>, std::vector<size_t>> _neighbors_cache;
@@ -158,15 +160,12 @@ inline void pyBindGeometries(py::module_ &module) {
                    "Геометрия также может поставлять ограниченное количество\n"
                    "обсчитываемых параметров. Может состоять из разных участков разной точности.\n";
 
-    py::class_<IGeometry, std::shared_ptr<IGeometry>>(module, "IGeometry")
-        .def("__str__", &IGeometry::__str__)
-        .def("__repr__", &IGeometry::__repr__)
-        .def("__len__", &IGeometry::__len__)
-        .def("get_neighbors", &IGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
-        .def("__getitem__", &IGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
-        .doc() = "Базовый интерфейс геометрии";
-
-    py::class_<CartesianGeometry, IGeometry, std::shared_ptr<CartesianGeometry>>(module, "CartesianGeometry")
+    py::class_<CartesianGeometry, std::shared_ptr<CartesianGeometry>>(module, "CartesianGeometry")
+        .def("__str__", &CartesianGeometry::__str__)
+        .def("__repr__", &CartesianGeometry::__repr__)
+        .def("__len__", &CartesianGeometry::__len__)
+        .def("get_neighbors", &CartesianGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
+        .def("__getitem__", &CartesianGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
         .def(
             py::init<const std::vector<std::shared_ptr<CartesianMoment>>&>(),
             py::arg("moments")

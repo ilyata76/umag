@@ -61,7 +61,7 @@ template <typename Element> class Registry {
 };
 
 using MaterialRegistry = Registry<Material>;
-using RegionRegistry = Registry<IRegion>;
+using RegionRegistry = Registry<Region>;
 using InteractionRegistry = Registry<IInteraction>;
 
 }; // namespace spindynapy
@@ -88,7 +88,7 @@ inline void pyBindRegistries(py::module_ &module) {
         .doc() = "Интерфейс для регистра-контейнера для материалов";
 
     py::class_<RegionRegistry, std::shared_ptr<RegionRegistry>>(module, "RegionRegistry")
-        .def(py::init<RegistryContainer<IRegion>>(), py::arg("container"))
+        .def(py::init<RegistryContainer<Region>>(), py::arg("container"))
         BUILD_REGISTRY_TEMPLATE_METHODS(RegionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных областей материалов";
 

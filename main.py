@@ -4,8 +4,8 @@ import numpy as np
 import sys
 
 from spindynapy.core.geometries import CartesianGeometry
-from spindynapy.core.simulation import Simulation
-from spindynapy.core.solvers import CartesianLLGSolver, SphericalLLGSolver
+from spindynapy.core.simulation import CartesianSimulation
+from spindynapy.core.solvers import CartesianLLGSolver
 from spindynapy.core.registries import MaterialRegistry, InteractionRegistry
 from spindynapy.core.interactions import ExchangeInteraction
 from spindynapy.core.types import Material
@@ -44,7 +44,7 @@ print(
 
 print(x[1].__repr__())
 
-Simulation(numpy_geometry, CartesianLLGSolver(), mat_reg, inter_reg)
+sim = CartesianSimulation(numpy_geometry, CartesianLLGSolver(), mat_reg, inter_reg)
 
 # 1. Линейная цепочка вдоль оси X
 # 5 моментов на линии x = 0, 1, 2, 3, 4; y = z = 0
@@ -126,3 +126,5 @@ print("Neighbors for index=13 (center [1,1,1], cutoff=1.1):", geom.get_neighbors
 print("Neighbors for index=13 (center [1,1,1], cutoff=1.5):", geom.get_neighbors(13, 1.5))
 print("Neighbors for index=0 (corner [0,0,0], cutoff=1.1):", geom.get_neighbors(0, 1.1))
 print("Neighbors for index=26 (corner [2,2,2], cutoff=2.0):", geom.get_neighbors(26, 2.0))
+
+print(sim.simulate_one_step())
