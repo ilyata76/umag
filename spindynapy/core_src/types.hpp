@@ -39,7 +39,6 @@ class Material {
   public:
     Material(regnum material_number, double exchange_constant_J)
         : _material_number(material_number), _exchange_constant_J(exchange_constant_J) {};
-    virtual ~Material() = default;
 
     regnum getNumber() const { return this->_material_number; };
     std::string __str__() const { return std::to_string(this->_material_number); };
@@ -84,17 +83,21 @@ class CartesianCoordinates {
     CartesianCoordinates(double x, double y, double z) noexcept : _coords(x, y, z) {};
     CartesianCoordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
 
-    virtual std::string __str__() const {
+    std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _coords(0), _coords(1), _coords(2));
     };
-    virtual std::string __repr__() const {
+    std::string __repr__() const {
         return std::format(
             "CartesianCoordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2)
         );
     };
 
-    virtual double getDistanceFrom(const CartesianCoordinates &other) const {
+    double getDistanceFrom(const CartesianCoordinates &other) const {
         return (this->_coords - other._coords).norm();
+    };
+
+    double getDistanceSquareFrom(const CartesianCoordinates &other) const {
+        return (this->_coords - other._coords).squaredNorm();
     };
 
     void setCoordinates(double x, double y, double z) {
@@ -121,13 +124,13 @@ class CartesianDirection {
     Eigen::Vector3d _vector;
 
   public:
-    CartesianDirection(double x, double y, double z) noexcept : _vector(x, y, z) {};
-    CartesianDirection(const Eigen::Vector3d &vector) noexcept : _vector(vector) {};
+    CartesianDirection(double x, double y, double z) noexcept : _vector(x, y, z) { _vector.normalize(); };
+    CartesianDirection(const Eigen::Vector3d &vector) noexcept : _vector(vector) { _vector.normalize(); };
 
-    virtual std::string __str__() const {
+    std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _vector(0), _vector(1), _vector(2));
     };
-    virtual std::string __repr__() const {
+    std::string __repr__() const {
         return std::format(
             "CartesianDirection(x={:.3f}, y={:.3f}, z={:.3f})", _vector(0), _vector(1), _vector(2)
         );
@@ -137,15 +140,17 @@ class CartesianDirection {
         _vector[0] = x;
         _vector[1] = y;
         _vector[2] = z;
+        _vector.normalize();
         return;
     }
 
     void setDirection(Eigen::Vector3d vector) {
-        _vector[0] = vector[0];
-        _vector[1] = vector[1];
-        _vector[2] = vector[2];
+        _vector = vector;
+        _vector.normalize();
         return;
     }
+
+    void normalize() { return _vector.normalize(); }
 };
 
 class CartesianMoment {
@@ -174,17 +179,22 @@ class CartesianMoment {
     /**
      * Получить вектор момента
      */
-    virtual CartesianDirection &getDirection() { return *_direction; };
+    CartesianDirection &getDirection() { return *_direction; };
 
     /**
      * Получить расположение момента
      */
-    virtual CartesianCoordinates &getCoordinates() { return *_coordinates; };
+    CartesianCoordinates &getCoordinates() { return *_coordinates; };
 
-    virtual std::string __str__() const {
+    /**
+     * Получить ссылку на метериал
+     */
+    Material &getMaterial() { return *_material; };
+
+    std::string __str__() const {
         return _coordinates->__str__() + "\t" + _direction->__str__() + "\t" + _material->__str__();
     };
-    virtual std::string __repr__() const {
+    std::string __repr__() const {
         return std::format(
             "CartesianMoment(coordinates={}, direction={}, material={})",
             _coordinates->__repr__(),
@@ -245,6 +255,8 @@ inline void pyBindTypes(py::module_ &module) {
             py::arg("x"), py::arg("y"), py::arg("z")
         )
         .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"))
+        .def("get_distance_from", &CartesianCoordinates::getDistanceFrom, py::arg("other"))
+        .def("get_distance_square_from", &CartesianCoordinates::getDistanceSquareFrom, py::arg("other"))
         BIND_STR_REPR(CartesianCoordinates)
         .doc() = "Декартовые координаты";
 
@@ -264,9 +276,10 @@ inline void pyBindTypes(py::module_ &module) {
             }),
             py::arg("coordinates"), py::arg("direction"), py::arg("material")
         )
-        .def("get_direction", &CartesianMoment::getDirection, py::return_value_policy::reference)
-        .def("get_coordinates", &CartesianMoment::getCoordinates, py::return_value_policy::reference)
         BIND_STR_REPR(CartesianMoment)
+        .def("get_material", &CartesianMoment::getMaterial, py::return_value_policy::reference)
+        .def("get_coordinates", &CartesianMoment::getCoordinates, py::return_value_policy::reference)
+        .def("get_direction", &CartesianMoment::getDirection, py::return_value_policy::reference)
         .doc() = "TODO";
 
     py::class_<Region>(module, "Region")

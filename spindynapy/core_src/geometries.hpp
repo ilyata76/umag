@@ -55,10 +55,13 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     virtual CoordSystem::Moment &operator[](size_t index) {
         throw std::logic_error("Operator [index] Not implemented");
     };
+    virtual CoordSystem::Moment getFromIndexes(std::vector<size_t> indexes) {
+        throw std::logic_error("Operator getFromIndexes Not implemented");
+    };
     virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) {
         throw std::logic_error("Method getNeighbors Not implemented");
     };
-    virtual size_t __len__() const { throw std::logic_error("Method __len__ Not implemented"); };
+    virtual size_t size() const { throw std::logic_error("Method size Not implemented"); };
 };
 
 /**
@@ -103,6 +106,9 @@ class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
     };
 
     virtual CartesianMoment &operator[](size_t index) override { return *this->_moments[index]; };
+    virtual CartesianMoment getFromIndexes(std::vector<size_t> indexes) override {
+        throw std::logic_error("Operator getFromIndecies Not implemented");
+    };
 
     virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) override {
         if (cutoff_radius <= 0) return {};
@@ -144,7 +150,7 @@ class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
         result.pop_back();
         return result + "])";
     };
-    virtual size_t __len__() const override { return _moments.size(); }
+    virtual size_t size() const override { return _moments.size(); }
 };
 
 }; // namespace spindynapy
@@ -163,7 +169,7 @@ inline void pyBindGeometries(py::module_ &module) {
     py::class_<CartesianGeometry, std::shared_ptr<CartesianGeometry>>(module, "CartesianGeometry")
         .def("__str__", &CartesianGeometry::__str__)
         .def("__repr__", &CartesianGeometry::__repr__)
-        .def("__len__", &CartesianGeometry::__len__)
+        .def("__len__", &CartesianGeometry::size)
         .def("get_neighbors", &CartesianGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
         .def("__getitem__", &CartesianGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
         .def(

@@ -6,12 +6,13 @@ import sys
 from spindynapy.core.geometries import CartesianGeometry
 from spindynapy.core.simulation import CartesianSimulation
 from spindynapy.core.solvers import CartesianLLGSolver
-from spindynapy.core.registries import MaterialRegistry, InteractionRegistry
-from spindynapy.core.interactions import ExchangeInteraction
+from spindynapy.core.registries import MaterialRegistry
+from spindynapy.core.interactions import CartesianInteractionRegistry, CartesianExchangeInteraction
 from spindynapy.core.types import Material
 
 mat_reg = MaterialRegistry({1: Material(1, 1.1), 2: Material(2, 2.2)})
-inter_reg = InteractionRegistry({1: ExchangeInteraction()})
+aaa = CartesianExchangeInteraction()
+inter_reg = CartesianInteractionRegistry({1: aaa})
 
 numpy_geometry = CartesianGeometry(
     np.array(

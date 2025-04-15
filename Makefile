@@ -31,6 +31,7 @@ clean-all: clean-spindynapy
 	rm -rf $(PROJECT_ROOT)/.pytest_cache/
 	rm -rf $(PROJECT_ROOT)/.mypy_cache
 	rm -rf $(PROJECT_ROOT)/__pycache__
+	rm -rf $(PROJECT_ROOT)/.cache
 
 run:
 	$(POETRY) run python main.py

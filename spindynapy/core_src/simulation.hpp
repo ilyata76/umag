@@ -38,7 +38,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     // регистр, который хранит мета-информацию о материалах, на которые ссылаются классы моментов
     std::shared_ptr<MaterialRegistry> _material_registry;
     // регистр, хранящий используемые рассчитываемые величины (взаимодействия между моментами)
-    std::shared_ptr<InteractionRegistry> _interaction_registry;
+    std::shared_ptr<InteractionRegistry<CoordSystem>> _interaction_registry;
 
     // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
     std::vector<Eigen::Vector3d> _effective_fields;
@@ -59,7 +59,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         std::shared_ptr<IGeometry<CoordSystem>> geometry,
         std::shared_ptr<ISolver<CoordSystem>> solver,
         std::shared_ptr<MaterialRegistry> material_registry,
-        std::shared_ptr<InteractionRegistry> interaction_registry,
+        std::shared_ptr<InteractionRegistry<CoordSystem>> interaction_registry,
         double dt = 1e-13
     )
         : _geometry(geometry),
@@ -111,7 +111,7 @@ inline void pyBindSimulation(py::module_ &module) {
                 std::shared_ptr<CartesianGeometry>,
                 std::shared_ptr<CartesianSolver>,
                 std::shared_ptr<MaterialRegistry>,
-                std::shared_ptr<InteractionRegistry>,
+                std::shared_ptr<CartesianInteractionRegistry>,
                 double>(),
             py::arg("geometry"),
             py::arg("solver"),

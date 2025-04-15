@@ -8,7 +8,6 @@
  * Реализуются для паттерна "легковес". Живут всю программу.
  */
 
-#include "interactions.hpp"
 #include "types.hpp"
 
 #include <map>
@@ -62,7 +61,6 @@ template <typename Element> class Registry {
 
 using MaterialRegistry = Registry<Material>;
 using RegionRegistry = Registry<Region>;
-using InteractionRegistry = Registry<IInteraction>;
 
 }; // namespace spindynapy
 
@@ -83,19 +81,16 @@ inline void pyBindRegistries(py::module_ &module) {
                    " Реализуются для паттерна \"легковес\". Живут всю программу.";
 
     py::class_<MaterialRegistry, std::shared_ptr<MaterialRegistry>>(module, "MaterialRegistry")
+        .def(py::init<>())
         .def(py::init<RegistryContainer<Material>>(), py::arg("container"))
         BUILD_REGISTRY_TEMPLATE_METHODS(MaterialRegistry)
         .doc() = "Интерфейс для регистра-контейнера для материалов";
 
     py::class_<RegionRegistry, std::shared_ptr<RegionRegistry>>(module, "RegionRegistry")
+        .def(py::init<>())
         .def(py::init<RegistryContainer<Region>>(), py::arg("container"))
         BUILD_REGISTRY_TEMPLATE_METHODS(RegionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных областей материалов";
-
-    py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(module, "InteractionRegistry")
-        .def(py::init<RegistryContainer<IInteraction>>(), py::arg("container"))
-        BUILD_REGISTRY_TEMPLATE_METHODS(InteractionRegistry)
-        .doc() = "Интерфейс для регистра-контейнера для разных взаимодействий";
 
     // clang-format on
 }

@@ -13,6 +13,7 @@
 // через функции, вызов которых разрешается при раскрытии <темплейта CoordSystem>
 
 #include "geometries.hpp"
+#include "interactions.hpp"
 #include "types.hpp"
 
 #include <iostream>
@@ -20,7 +21,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <stdexcept>
-#include <string>
 
 namespace py = pybind11;
 
@@ -30,32 +30,26 @@ namespace spindynapy {
  * Базовый интерфейс решателя-интегратора
  */
 
-typedef std::vector<Eigen::Vector3d> eff_f;
-
 template <CoordSystemConcept CoordSystem> class ISolver {
   protected:
     ISolver() = default;
+
   public:
     virtual ~ISolver() = default;
-    virtual void updateMoments(IGeometry<CoordSystem> &geometry, eff_f effective_fields, double dt) {
+
+    virtual void
+    updateMoments(IGeometry<CoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt) {
         throw std::logic_error("The solving Not implemented");
     }
 };
 
-class CartesianSolver : public ISolver<CartesianCoordSystem> {
-  protected:
-    CartesianSolver() = default;
-  public:
-    virtual void
-    updateMoments(IGeometry<CartesianCoordSystem> &geometry, eff_f effective_fields, double dt) override {
-        throw std::logic_error("The solving Not implemented");
-    };
-};
+using CartesianSolver = ISolver<CartesianCoordSystem>;
 
 class CartesianLLGSolver : public CartesianSolver {
   public:
-    virtual void
-    updateMoments(IGeometry<CartesianCoordSystem> &geometry, eff_f effective_fields, double dt) override {
+    virtual void updateMoments(
+        IGeometry<CartesianCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
+    ) override {
         std::cout << "AMOGUS\n";
     };
 };
@@ -72,7 +66,7 @@ inline void pyBindSolvers(py::module_ &module) {
                    "или любого другого прогрессирования системы в зависимости от\n"
                    "предоставленных внешних параметров.";
 
-    py::class_<CartesianSolver, std::shared_ptr<CartesianSolver>>(module, "CartesianAbstractSolver")
+    py::class_<CartesianSolver, std::shared_ptr<CartesianSolver>>(module, "CartesianSolver")
         .def("update_moments", &CartesianSolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
         .doc() = "по сути - базовый абстрактный солвер, в декартовых координатах";
 
