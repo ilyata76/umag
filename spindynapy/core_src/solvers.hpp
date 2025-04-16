@@ -47,10 +47,22 @@ using CartesianAbstractSolver = ISolver<CartesianCoordSystem>;
 
 class CartesianLLGSolver : public CartesianAbstractSolver {
   public:
+    CartesianLLGSolver() = default;
+
     virtual void updateMoments(
         IGeometry<CartesianCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) override {
-        std::cout << "AMOGUS\n";
+        size_t num_moments = geometry.size();
+
+        // проверка на изменение геометрии
+        if (effective_fields.size() != num_moments) {
+            throw std::runtime_error("Mismatch between geometry size and effective fields size in LLG solver.");
+        }
+
+        // для каждого момента обсчёт уравнения
+        for (size_t i = 0; i < num_moments; ++i) {
+            std::cout << i << std::endl;
+        }
     };
 };
 

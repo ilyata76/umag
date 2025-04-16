@@ -12,7 +12,7 @@ from spindynapy.core.types import Material
 
 mat_reg = MaterialRegistry({1: Material(1, 1.1), 2: Material(2, 2.2)})
 aaa = CartesianExchangeInteraction(10.0)
-inter_reg = CartesianInteractionRegistry({1: aaa})
+inter_reg = CartesianInteractionRegistry({1: aaa, 2: CartesianExchangeInteraction(2)})
 
 numpy_geometry = CartesianSimpleGeometry(
     np.array(

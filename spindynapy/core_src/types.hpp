@@ -19,6 +19,7 @@
 namespace py = pybind11;
 
 #define BIND_STR_REPR(cls) .def("__str__", &cls::__str__).def("__repr__", &cls::__repr__)
+// TODO переделать через ostream и lambda: ostringstream.str()
 
 namespace spindynapy {
 

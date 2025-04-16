@@ -33,12 +33,12 @@ template <typename Element> class Registry {
   public:
     Registry() : _container() {};
     Registry(RegistryContainer<Element> container) : _container(container) {}
-    virtual ~Registry() = default;
+    ~Registry() = default;
 
-    virtual std::string __str__() const { throw std::logic_error("Method __Str__ Not implemented"); };
-    virtual std::string __repr__() const { throw std::logic_error("Method __Repr__ Not implemented"); };
+    std::string __str__() const { throw std::logic_error("Method __Str__ Not implemented"); };
+    std::string __repr__() const { throw std::logic_error("Method __Repr__ Not implemented"); };
 
-    virtual Element &getElement(regnum number) {
+    Element &getElement(regnum number) {
         if (this->_container.contains(number))
             return *this->_container.at(number);
         else
@@ -56,7 +56,13 @@ template <typename Element> class Registry {
             ));
     }
 
-    virtual bool isEmpty() { return _container.empty(); };
+    bool isEmpty() { return _container.empty(); };
+
+    using iterator = RegistryContainer<Element>::iterator;
+    iterator begin() { return iterator(_container.begin()); }
+    iterator end() { return iterator(_container.end()); }
+    iterator cbegin() const { return iterator(_container.cbegin()); }
+    iterator cend() const { return iterator(_container.cend()); }
 };
 
 using MaterialRegistry = Registry<Material>;

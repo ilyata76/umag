@@ -11,6 +11,7 @@
 #include "types.hpp"
 
 #include <format>
+#include <iostream>
 #include <memory>
 #include <pybind11/pybind11.h>
 #include <string>
@@ -51,25 +52,27 @@ using CartesianAbstractInteraction = IInteraction<CartesianCoordSystem>;
 class CartesianExchangeInteraction : public CartesianAbstractInteraction {
   protected:
     double _cutoff_radius;
+
   public:
-    CartesianExchangeInteraction(double cutoff_radius): _cutoff_radius(cutoff_radius) {};
+    CartesianExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
 
     virtual EffectiveField calculateFieldContribution(
-        size_t moment_index,
-        IGeometry<CartesianCoordSystem> &geometry,
-        MaterialRegistry &material_registry
+        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
         EffectiveField exchange_field = EffectiveField::Zero();
-        auto& current_moment = geometry[moment_index];
-        auto& current_material = current_moment.getMaterial();
+        auto &current_moment = geometry[moment_index];
+        auto &current_material = current_moment.getMaterial();
         auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
         for (size_t neighbor_index : neighbor_indices) {
             geometry[neighbor_index].getDirection();
         }
-        return {1, 1, 1};
+        std::cout << "CartesianExchangeInteraction" << std::endl;
+        return {1, 2, 3};
     }
 
-    virtual std::string __str__() const override { return std::format("CartesianExchangeInteraction(r={})", _cutoff_radius); };
+    virtual std::string __str__() const override {
+        return std::format("CartesianExchangeInteraction(r={})", _cutoff_radius);
+    };
     virtual std::string __repr__() const override {
         return std::format("CartesianExchangeInteraction(cutoff_radius={})", _cutoff_radius);
     };

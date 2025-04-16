@@ -16,6 +16,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <stdexcept>
+#include <string>
 
 namespace py = pybind11;
 
@@ -41,13 +42,31 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     std::shared_ptr<InteractionRegistry<CoordSystem>> _interaction_registry;
 
     // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
-    std::vector<Eigen::Vector3d> _effective_fields;
+    std::vector<EffectiveField> _effective_fields;
 
     // текущее время
     double _current_time = .0;
 
     // временной шаг
     double _dt;
+
+    virtual void calculateEffectiveFields() {
+        size_t moments_size = this->_geometry->size();
+
+        // корректировка размера буфера (если изменилась геометрия!)
+        if (this->_effective_fields.size() != moments_size) {
+            this->_effective_fields.resize(moments_size, EffectiveField::Zero());
+        }
+
+        // обсчёт полей от зарегистрированных взаимодействий
+        for (size_t i; i < moments_size; ++i) {
+            this->_effective_fields[i] = EffectiveField::Zero();
+            for (auto &[_, interaction] : *_interaction_registry) {
+                this->_effective_fields[i] +=
+                    interaction->calculateFieldContribution(i, *this->_geometry, *this->_material_registry);
+            }
+        }
+    }
 
   public:
     /**
@@ -68,25 +87,31 @@ template <CoordSystemConcept CoordSystem> class Simulation {
           _interaction_registry(interaction_registry),
           _dt(dt) {
         //
-        if (!geometry) throw std::invalid_argument("Геометрия не может быть None");
-        if (!solver) throw std::invalid_argument("Решатель не может быть None");
-        if (!interaction_registry || material_registry->isEmpty())
+        if (!_geometry) throw std::invalid_argument("Геометрия не может быть None");
+        if (!_solver) throw std::invalid_argument("Решатель не может быть None");
+        if (!_interaction_registry || _material_registry->isEmpty())
             throw std::invalid_argument("Регистр взаимодействий не может быть None");
-        if (!material_registry || material_registry->isEmpty())
+        if (!_material_registry || _material_registry->isEmpty())
             throw std::invalid_argument("Регистр материалов не может быть None");
+        if (_dt <= 0) throw std::invalid_argument("Time step dt must be positive.");
+
+        // Инициализируем буфер эффективных полей нужного размера
+        this->_effective_fields.resize(geometry->size(), EffectiveField::Zero());
     };
 
     virtual std::string __str__() const { return _geometry->__str__(); };
     virtual std::string __repr__() const { return _geometry->__repr__(); };
 
     virtual void simulateOneStep() {
-        return this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
+        this->calculateEffectiveFields();
+        this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
+        this->_current_time += this->_dt;
     };
+
     virtual void simulateManySteps(uint steps) {
         for (uint i = 0; i < steps; ++i) {
             this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
         }
-        return;
     };
 };
 

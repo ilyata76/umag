@@ -24,6 +24,11 @@ namespace py = pybind11;
 
 namespace spindynapy {
 
+template <CoordSystemConcept CoordSystem>
+using MomentsContainer = std::vector<std::shared_ptr<typename CoordSystem::Moment>>;
+
+using NeighborsContainers = std::map<std::pair<size_t, double>, std::vector<size_t>>;
+
 /**
  * Базовый интерфейс геометрии
  */
@@ -62,6 +67,10 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
         throw std::logic_error("Method getNeighbors Not implemented");
     };
     virtual size_t size() const { throw std::logic_error("Method size Not implemented"); };
+
+    using iterator = MomentsContainer<CoordSystem>::iterator;
+    virtual iterator begin() { throw std::logic_error("Method iterator.begin Not implemented"); }
+    virtual iterator end() { throw std::logic_error("Method iterator.end Not implemented"); }
 };
 
 using CartesianAbstractGeometry = IGeometry<CartesianCoordSystem>;
@@ -71,8 +80,8 @@ using CartesianAbstractGeometry = IGeometry<CartesianCoordSystem>;
  */
 class CartesianSimpleGeometry : public CartesianAbstractGeometry {
   protected:
-    std::vector<std::shared_ptr<CartesianMoment>> _moments;
-    std::map<std::pair<size_t, double>, std::vector<size_t>> _neighbors_cache;
+    MomentsContainer<CartesianCoordSystem> _moments;
+    NeighborsContainers _neighbors_cache;
 
     virtual bool hasInNeighborsCanche(size_t index, double cutoff_radius) const override {
         return _neighbors_cache.contains(std::make_pair(index, cutoff_radius));
@@ -90,7 +99,8 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
     virtual void clearAllNeighborsCache() override { _neighbors_cache.clear(); };
 
   public:
-    CartesianSimpleGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments) : _moments(moments) {};
+    CartesianSimpleGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments)
+        : _moments(moments) {};
     CartesianSimpleGeometry(std::vector<std::shared_ptr<CartesianMoment>> &&moments)
         : _moments(std::move(moments)) {}
     CartesianSimpleGeometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
@@ -154,6 +164,10 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
         return result + "])";
     };
     virtual size_t size() const override { return _moments.size(); }
+
+    using iterator = std::vector<std::shared_ptr<CartesianMoment>>::iterator;
+    virtual iterator begin() override { return _moments.begin(); }
+    virtual iterator end() override { return _moments.end(); }
 };
 
 }; // namespace spindynapy
