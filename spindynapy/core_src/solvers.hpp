@@ -43,9 +43,9 @@ template <CoordSystemConcept CoordSystem> class ISolver {
     }
 };
 
-using CartesianSolver = ISolver<CartesianCoordSystem>;
+using CartesianAbstractSolver = ISolver<CartesianCoordSystem>;
 
-class CartesianLLGSolver : public CartesianSolver {
+class CartesianLLGSolver : public CartesianAbstractSolver {
   public:
     virtual void updateMoments(
         IGeometry<CartesianCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
@@ -66,11 +66,11 @@ inline void pyBindSolvers(py::module_ &module) {
                    "или любого другого прогрессирования системы в зависимости от\n"
                    "предоставленных внешних параметров.";
 
-    py::class_<CartesianSolver, std::shared_ptr<CartesianSolver>>(module, "CartesianSolver")
-        .def("update_moments", &CartesianSolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
+    py::class_<CartesianAbstractSolver, std::shared_ptr<CartesianAbstractSolver>>(module, "CartesianAbstractSolver")
+        .def("update_moments", &CartesianAbstractSolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
         .doc() = "по сути - базовый абстрактный солвер, в декартовых координатах";
 
-    py::class_<CartesianLLGSolver, CartesianSolver, std::shared_ptr<CartesianLLGSolver>>(module, "CartesianLLGSolver")
+    py::class_<CartesianLLGSolver, CartesianAbstractSolver, std::shared_ptr<CartesianLLGSolver>>(module, "CartesianLLGSolver")
         .def(py::init<>())
         .doc() = "солвер Ландау-Лифшица-Гильберта в декартовых координатах (классический алгоритм)";
 

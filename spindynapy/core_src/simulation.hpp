@@ -108,8 +108,8 @@ inline void pyBindSimulation(py::module_ &module) {
         .def("simulate_many_steps", &CartesianSimulation::simulateManySteps, py::arg("steps"))
         .def(
             py::init<
-                std::shared_ptr<CartesianGeometry>,
-                std::shared_ptr<CartesianSolver>,
+                std::shared_ptr<CartesianAbstractGeometry>,
+                std::shared_ptr<CartesianAbstractSolver>,
                 std::shared_ptr<MaterialRegistry>,
                 std::shared_ptr<CartesianInteractionRegistry>,
                 double>(),

@@ -3,7 +3,7 @@ from spindynapy.core.types import CartesianDirection, CartesianMoment, Cartesian
 import numpy as np
 import sys
 
-from spindynapy.core.geometries import CartesianGeometry
+from spindynapy.core.geometries import CartesianSimpleGeometry
 from spindynapy.core.simulation import CartesianSimulation
 from spindynapy.core.solvers import CartesianLLGSolver
 from spindynapy.core.registries import MaterialRegistry
@@ -11,18 +11,19 @@ from spindynapy.core.interactions import CartesianInteractionRegistry, Cartesian
 from spindynapy.core.types import Material
 
 mat_reg = MaterialRegistry({1: Material(1, 1.1), 2: Material(2, 2.2)})
-aaa = CartesianExchangeInteraction()
+aaa = CartesianExchangeInteraction(10.0)
 inter_reg = CartesianInteractionRegistry({1: aaa})
 
-numpy_geometry = CartesianGeometry(
+numpy_geometry = CartesianSimpleGeometry(
     np.array(
         [[1, 1, 1, 1, 1, 1, 2], [1, 1, 1234123421, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1]]
     ),
     material_registry=mat_reg,
 )
+print(aaa.calculate_field_contribution(0, numpy_geometry, mat_reg))
 print(numpy_geometry)
 print(
-    x := CartesianGeometry(
+    x := CartesianSimpleGeometry(
         moments=[
             CartesianMoment(
                 coordinates=CartesianCoordinates(x=1.000, y=1.000, z=1.000),
@@ -97,17 +98,17 @@ random_points = np.array([
 # - cutoff_radius = 10.0: для index=0 → [1, 2, 3]
 
 # Тестирование линейной цепочки
-geom_linear = CartesianGeometry(linear_chain, mat_reg)
+geom_linear = CartesianSimpleGeometry(linear_chain, mat_reg)
 print("Linear chain neighbors (index=2, cutoff=1.1):", geom_linear.get_neighbors(2, 1.1))
 print("Linear chain neighbors (index=2, cutoff=2.1):", geom_linear.get_neighbors(2, 2.1))
 
 # Тестирование кубической решётки
-geom_cubic = CartesianGeometry(cubic_lattice, mat_reg)
+geom_cubic = CartesianSimpleGeometry(cubic_lattice, mat_reg)
 print("Cubic lattice neighbors (index=0, cutoff=1.1):", geom_cubic.get_neighbors(0, 1.1))
 print("Cubic lattice neighbors (index=7, cutoff=1.5):", geom_cubic.get_neighbors(7, 1.5))
 
 # Тестирование случайного расположения
-geom_random = CartesianGeometry(random_points, mat_reg)
+geom_random = CartesianSimpleGeometry(random_points, mat_reg)
 print("Random points neighbors (index=0, cutoff=0.5):", geom_random.get_neighbors(0, 0.5))
 print("Random points neighbors (index=2, cutoff=10.0):", geom_random.get_neighbors(2, 10.0))
 
@@ -119,7 +120,7 @@ for x in range(3):
             cubic_3x3x3[index] = [x, y, z, 0.0, 0.0, 1.0, 1]
             index += 1
 
-geom = CartesianGeometry(cubic_3x3x3, mat_reg)
+geom = CartesianSimpleGeometry(cubic_3x3x3, mat_reg)
 print("Geometry:\n", geom)
 
 # Тестирование getNeighbors

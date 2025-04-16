@@ -64,10 +64,12 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     virtual size_t size() const { throw std::logic_error("Method size Not implemented"); };
 };
 
+using CartesianAbstractGeometry = IGeometry<CartesianCoordSystem>;
+
 /**
  * Простая геометрия, задаваемая в декартовой системе координат
  */
-class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
+class CartesianSimpleGeometry : public CartesianAbstractGeometry {
   protected:
     std::vector<std::shared_ptr<CartesianMoment>> _moments;
     std::map<std::pair<size_t, double>, std::vector<size_t>> _neighbors_cache;
@@ -88,10 +90,10 @@ class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
     virtual void clearAllNeighborsCache() override { _neighbors_cache.clear(); };
 
   public:
-    CartesianGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments) : _moments(moments) {};
-    CartesianGeometry(std::vector<std::shared_ptr<CartesianMoment>> &&moments)
+    CartesianSimpleGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments) : _moments(moments) {};
+    CartesianSimpleGeometry(std::vector<std::shared_ptr<CartesianMoment>> &&moments)
         : _moments(std::move(moments)) {}
-    CartesianGeometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
+    CartesianSimpleGeometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
         if (moments.cols() < 7) {
             throw std::invalid_argument("Expected 7 columns: [x, y, z, sx, sy, sz, material]");
         };
@@ -124,6 +126,7 @@ class CartesianGeometry : public IGeometry<CartesianCoordSystem> {
         const auto &target_coords = _moments[index]->getCoordinates();
 
         for (size_t i = 0; i < _moments.size(); ++i) {
+            if (i == index) continue;
             const double distance_sq = target_coords.getDistanceFrom(_moments[i]->getCoordinates());
             if (distance_sq <= cutoff_radius) neighbors.push_back(i);
         }
@@ -166,12 +169,15 @@ inline void pyBindGeometries(py::module_ &module) {
                    "Геометрия также может поставлять ограниченное количество\n"
                    "обсчитываемых параметров. Может состоять из разных участков разной точности.\n";
 
-    py::class_<CartesianGeometry, std::shared_ptr<CartesianGeometry>>(module, "CartesianGeometry")
-        .def("__str__", &CartesianGeometry::__str__)
-        .def("__repr__", &CartesianGeometry::__repr__)
-        .def("__len__", &CartesianGeometry::size)
-        .def("get_neighbors", &CartesianGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
-        .def("__getitem__", &CartesianGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
+    py::class_<CartesianAbstractGeometry, std::shared_ptr<CartesianAbstractGeometry>>(module, "CartesianAbstractGeometry")
+        .def("__str__", &CartesianAbstractGeometry::__str__)
+        .def("__repr__", &CartesianAbstractGeometry::__repr__)
+        .def("__len__", &CartesianAbstractGeometry::size)
+        .def("get_neighbors", &CartesianAbstractGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
+        .def("__getitem__", &CartesianAbstractGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
+        .doc() = "TODO";
+
+    py::class_<CartesianSimpleGeometry, CartesianAbstractGeometry, std::shared_ptr<CartesianSimpleGeometry>>(module, "CartesianSimpleGeometry")
         .def(
             py::init<const std::vector<std::shared_ptr<CartesianMoment>>&>(),
             py::arg("moments")

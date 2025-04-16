@@ -10,6 +10,7 @@
 #include "registries.hpp"
 #include "types.hpp"
 
+#include <format>
 #include <memory>
 #include <pybind11/pybind11.h>
 #include <string>
@@ -32,7 +33,7 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
     virtual ~IInteraction() = default;
 
     virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, const IGeometry<CoordSystem> &geometry, const MaterialRegistry &material_registry
+        size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry
     ) const {
         throw std::logic_error("Method calculateFieldContribution Not implemented");
     };
@@ -45,19 +46,33 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
  * Обменное взаимодействие
  */
 
-using CartesianInteraction = IInteraction<CartesianCoordSystem>;
+using CartesianAbstractInteraction = IInteraction<CartesianCoordSystem>;
 
-class CartesianExchangeInteraction : public CartesianInteraction {
+class CartesianExchangeInteraction : public CartesianAbstractInteraction {
+  protected:
+    double _cutoff_radius;
   public:
-    CartesianExchangeInteraction() = default;
+    CartesianExchangeInteraction(double cutoff_radius): _cutoff_radius(cutoff_radius) {};
 
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index,
-        const IGeometry<CartesianCoordSystem> &geometry,
-        const MaterialRegistry &material_registry
+        IGeometry<CartesianCoordSystem> &geometry,
+        MaterialRegistry &material_registry
     ) const override {
-        throw std::logic_error("Method calculateFieldContribution Not implemented");
+        EffectiveField exchange_field = EffectiveField::Zero();
+        auto& current_moment = geometry[moment_index];
+        auto& current_material = current_moment.getMaterial();
+        auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
+        for (size_t neighbor_index : neighbor_indices) {
+            geometry[neighbor_index].getDirection();
+        }
+        return {1, 1, 1};
     }
+
+    virtual std::string __str__() const override { return std::format("CartesianExchangeInteraction(r={})", _cutoff_radius); };
+    virtual std::string __repr__() const override {
+        return std::format("CartesianExchangeInteraction(cutoff_radius={})", _cutoff_radius);
+    };
 };
 
 template <CoordSystemConcept CoordSystem> using InteractionRegistry = Registry<IInteraction<CoordSystem>>;
@@ -73,23 +88,23 @@ inline void pyBindInteractions(py::module_ &module) {
     module.doc() = "Интерфейсы взаимодействий между элементами системы.\n"
                    "Таковыми могут быть потенциальные поля, силы, etc. \n";
 
-    py::class_<CartesianInteraction, std::shared_ptr<CartesianInteraction>>(module, "CartesianInteraction")
-        .def("__str__", &CartesianInteraction::__str__)
-        .def("__repr__", &CartesianInteraction::__repr__)
+    py::class_<CartesianAbstractInteraction, std::shared_ptr<CartesianAbstractInteraction>>(module, "CartesianAbstractInteraction")
+        .def("__str__", &CartesianAbstractInteraction::__str__)
+        .def("__repr__", &CartesianAbstractInteraction::__repr__)
         .def(
             "calculate_field_contribution",
-            &CartesianInteraction::calculateFieldContribution,
+            &CartesianAbstractInteraction::calculateFieldContribution,
             py::arg("moment_index"), py::arg("geometry"), py::arg("material_registry")
         )
         .doc() = "Базовый интерфейс взаимодействий (сил, полей, etc.)";
 
-    py::class_<CartesianExchangeInteraction, CartesianInteraction, std::shared_ptr<CartesianExchangeInteraction>>(module, "CartesianExchangeInteraction")
-        .def(py::init<>())
+    py::class_<CartesianExchangeInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianExchangeInteraction>>(module, "CartesianExchangeInteraction")
+        .def(py::init<double>(), py::arg("cutoff_radius"))
         .doc() = "Обменное взаимодействие";
 
     py::class_<CartesianInteractionRegistry, std::shared_ptr<CartesianInteractionRegistry>>(module, "CartesianInteractionRegistry")
         .def(py::init<>())
-        .def(py::init<RegistryContainer<CartesianInteraction>>(), py::arg("container"))
+        .def(py::init<RegistryContainer<CartesianAbstractInteraction>>(), py::arg("container"))
         BUILD_REGISTRY_TEMPLATE_METHODS(CartesianInteractionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных взаимодействий";
 
