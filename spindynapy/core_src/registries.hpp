@@ -10,7 +10,6 @@
 
 #include "types.hpp"
 
-#include <map>
 #include <memory>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -21,7 +20,7 @@ namespace py = pybind11;
 
 namespace spindynapy {
 
-template <typename Element> using RegistryContainer = std::map<regnum, std::shared_ptr<Element>>;
+template <typename Element> using RegistryContainer = std::unordered_map<regnum, std::shared_ptr<Element>>;
 
 /**
  * Регистр-контейнер

@@ -32,24 +32,30 @@ typedef short regnum;
  * компромисс: полноценный класс с набором параметров.
  */
 class Material {
-  protected:
-    double _exchange_constant_J;
-    regnum _material_number;
-
   public:
-    Material(regnum material_number, double exchange_constant_J)
-        : _material_number(material_number), _exchange_constant_J(exchange_constant_J) {};
+    double exchange_constant_J;    //
+    double atomic_magnetic_moment; // в магнетонах бора
+    regnum material_number;
 
-    regnum getNumber() const { return this->_material_number; };
-    std::string __str__() const { return std::to_string(this->_material_number); };
+    Material(regnum material_number, double exchange_constant_J, double atomic_magnetic_moment)
+        : material_number(material_number),
+          exchange_constant_J(exchange_constant_J),
+          atomic_magnetic_moment(atomic_magnetic_moment) {};
+
+    regnum getNumber() const { return this->material_number; };
+    std::string __str__() const { return std::to_string(this->material_number); };
     std::string __repr__() const {
         return std::format(
             "Material(material_number={}, exchange_constant_J={})",
-            this->_material_number,
-            this->_exchange_constant_J
+            this->material_number,
+            this->exchange_constant_J
         );
     }
+
+    bool operator==(const Material &other) const { return material_number == other.material_number; }
 };
+
+class MaterialInterface {};
 
 class Region {
   protected:
@@ -150,6 +156,8 @@ class CartesianDirection {
         return;
     }
 
+    Eigen::Vector3d &asVector() { return this->_vector; }
+
     void normalize() { return _vector.normalize(); }
 };
 
@@ -244,7 +252,12 @@ inline void pyBindTypes(py::module_ &module) {
 
     py::class_<Material, std::shared_ptr<Material>>(module, "Material")
         BIND_STR_REPR(Material)
-        .def(py::init<regnum, double>(), py::arg("material_number"), py::arg("exchange_constant_J"))
+        .def(
+            py::init<regnum, double, double>(),
+            py::arg("material_number"),
+            py::arg("exchange_constant_J"),
+            py::arg("atomic_magnetic_moment")
+        )
         .def("get_number", &Material::getNumber)
         .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
                  "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";

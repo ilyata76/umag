@@ -14,11 +14,13 @@ namespace spindynapy::constants {
 
 constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1e-6;
 constexpr auto NUMBER_PI = 3.14159;
+constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // J/T (или A*m^2)
 
 namespace sci {
 
 constexpr auto mu0 = VACUUM_MAGNETIC_PERMEABILITY;
 constexpr auto pi = NUMBER_PI;
+constexpr auto mu_B = BOHR_MAGNETON;
 
 }; // namespace sci
 
@@ -36,6 +38,7 @@ inline void pyBindConstants(py::module_ &module) {
 
     module.attr("VACUUM_MAGNETIC_PERMEABILITY") = VACUUM_MAGNETIC_PERMEABILITY;
     module.attr("NUMBER_PI") = NUMBER_PI;
+    module.attr("BOHR_MAGNETON") = BOHR_MAGNETON;
 
     module.doc() = "Модуль, отвечающий за предоставление фундаментальных констант \n"
                    "и любых других, используемых в приложении. \n"
@@ -43,6 +46,7 @@ inline void pyBindConstants(py::module_ &module) {
 
     module.attr("mu0") = sci::mu0;
     module.attr("pi") = sci::pi;
+    module.attr("mu_B") = sci::mu_B;
 
     // clang-format on
 }

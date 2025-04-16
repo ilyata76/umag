@@ -14,20 +14,43 @@
 #include "types.hpp"
 
 #include <memory>
+#include <object.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace py = pybind11;
+
+using index_radius_key = std::pair<size_t, double>;
+
+template <typename T> void hash_combine(std::size_t &seed, T const &key) {
+    std::hash<T> hasher;
+    seed ^= hasher(key) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+template <typename T1, typename T2> struct std::hash<std::pair<T1, T2>> {
+    std::size_t operator()(std::pair<T1, T2> const &p) const {
+        std::size_t seed1(0);
+        ::hash_combine(seed1, p.first);
+        ::hash_combine(seed1, p.second);
+
+        std::size_t seed2(0);
+        ::hash_combine(seed2, p.second);
+        ::hash_combine(seed2, p.first);
+
+        return std::min(seed1, seed2);
+    }
+};
 
 namespace spindynapy {
 
 template <CoordSystemConcept CoordSystem>
 using MomentsContainer = std::vector<std::shared_ptr<typename CoordSystem::Moment>>;
 
-using NeighborsContainers = std::map<std::pair<size_t, double>, std::vector<size_t>>;
+using NeighborsContainers = std::unordered_map<index_radius_key, std::vector<size_t>>;
 
 /**
  * Базовый интерфейс геометрии
@@ -71,6 +94,10 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     using iterator = MomentsContainer<CoordSystem>::iterator;
     virtual iterator begin() { throw std::logic_error("Method iterator.begin Not implemented"); }
     virtual iterator end() { throw std::logic_error("Method iterator.end Not implemented"); }
+
+    virtual std::unique_ptr<IGeometry<CoordSystem>> clone() const {
+        throw std::logic_error("Method clone Not implemented");
+    };
 };
 
 using CartesianAbstractGeometry = IGeometry<CartesianCoordSystem>;
@@ -168,6 +195,10 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
     using iterator = std::vector<std::shared_ptr<CartesianMoment>>::iterator;
     virtual iterator begin() override { return _moments.begin(); }
     virtual iterator end() override { return _moments.end(); }
+
+    virtual std::unique_ptr<IGeometry<CartesianCoordSystem>> clone() const override {
+        return std::make_unique<CartesianSimpleGeometry>(this->_moments);
+    }
 };
 
 }; // namespace spindynapy

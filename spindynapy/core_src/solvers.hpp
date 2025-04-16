@@ -53,15 +53,16 @@ class CartesianLLGSolver : public CartesianAbstractSolver {
         IGeometry<CartesianCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) override {
         size_t num_moments = geometry.size();
+        std::cout << "\n\nUPDATE MOMENTS\n\n";
 
         // проверка на изменение геометрии
         if (effective_fields.size() != num_moments) {
-            throw std::runtime_error("Mismatch between geometry size and effective fields size in LLG solver.");
+            throw std::runtime_error("Mismatch between geometry size and effective fields size in LLG solver."
+            );
         }
-
         // для каждого момента обсчёт уравнения
         for (size_t i = 0; i < num_moments; ++i) {
-            std::cout << i << std::endl;
+            //
         }
     };
 };

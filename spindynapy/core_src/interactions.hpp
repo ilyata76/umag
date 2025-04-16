@@ -6,12 +6,12 @@
  * Таковыми могут быть потенциальные поля, силы, etc.
  */
 
+#include "constants.hpp"
 #include "geometries.hpp"
 #include "registries.hpp"
 #include "types.hpp"
 
 #include <format>
-#include <iostream>
 #include <memory>
 #include <pybind11/pybind11.h>
 #include <string>
@@ -32,6 +32,10 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
 
   public:
     virtual ~IInteraction() = default;
+
+    virtual void saveStepBuffer(std::vector<EffectiveField> buffer_from) {
+        throw std::logic_error("Method saveStepBuffer Not implemented");
+    }
 
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry
@@ -59,15 +63,25 @@ class CartesianExchangeInteraction : public CartesianAbstractInteraction {
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
+        // H = (J over abs(magnetic_moment)) * SUM on S_neighbors
+        // S = mu / |mu| normalized (!)
         EffectiveField exchange_field = EffectiveField::Zero();
         auto &current_moment = geometry[moment_index];
         auto &current_material = current_moment.getMaterial();
+
+        // величина магнитного момента
+        auto atomic_magnetic_moments_norm =
+            current_material.atomic_magnetic_moment * constants::BOHR_MAGNETON;
+        const auto GENERALIZED_PREFIX = current_material.exchange_constant_J / atomic_magnetic_moments_norm;
+
         auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
         for (size_t neighbor_index : neighbor_indices) {
-            geometry[neighbor_index].getDirection();
+            exchange_field += (geometry[neighbor_index].getMaterial() == current_material
+                                   ? GENERALIZED_PREFIX
+                                   : GENERALIZED_PREFIX /* тут можно будет интерфейс использовать */) *
+                              geometry[neighbor_index].getDirection().asVector();
         }
-        std::cout << "CartesianExchangeInteraction" << std::endl;
-        return {1, 2, 3};
+        return exchange_field;
     }
 
     virtual std::string __str__() const override {
