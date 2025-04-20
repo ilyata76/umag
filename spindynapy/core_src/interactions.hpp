@@ -49,17 +49,21 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
  * Обменное взаимодействие
  */
 
-using CartesianAbstractInteraction = IInteraction<CartesianCoordSystem>;
+template <CoordSystemConcept CoordSystem> using InteractionRegistry = Registry<IInteraction<CoordSystem>>;
 
-class CartesianExchangeInteraction : public CartesianAbstractInteraction {
+namespace cartesian {
+
+using AbstractInteraction = IInteraction<NamespaceCoordSystem>;
+
+class ExchangeInteraction : public AbstractInteraction {
   protected:
     double _cutoff_radius;
 
   public:
-    CartesianExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
+    ExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
 
     virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
         // H = (J over abs(magnetic_moment)) * SUM on S_neighbors
         // S = mu / |mu| normalized (!)
@@ -83,30 +87,30 @@ class CartesianExchangeInteraction : public CartesianAbstractInteraction {
     }
 
     virtual std::string __str__() const override {
-        return std::format("CartesianExchangeInteraction(r={})", _cutoff_radius);
+        return std::format("ExchangeInteraction(r={})", _cutoff_radius);
     };
     virtual std::string __repr__() const override {
-        return std::format("CartesianExchangeInteraction(cutoff_radius={})", _cutoff_radius);
+        return std::format("ExchangeInteraction(cutoff_radius={})", _cutoff_radius);
     };
 };
 
-class CartesianExternalInteraction : public CartesianAbstractInteraction {
+class ExternalInteraction : public AbstractInteraction {
   protected:
     Eigen::Vector3d external_field;
 
   public:
-    CartesianExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
-    CartesianExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
+    ExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
+    ExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
 
     virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
         return this->external_field;
     }
 
     virtual std::string __str__() const override {
         return std::format(
-            "CartesianExternalInteraction(field=({}, {}, {}))",
+            "ExternalInteraction(field=({}, {}, {}))",
             this->external_field.x(),
             this->external_field.y(),
             this->external_field.z()
@@ -115,7 +119,7 @@ class CartesianExternalInteraction : public CartesianAbstractInteraction {
 
     virtual std::string __repr__() const override {
         return std::format(
-            "CartesianExternalInteraction(sx={}, sy={}, sz={})",
+            "ExternalInteraction(sx={}, sy={}, sz={})",
             this->external_field.x(),
             this->external_field.y(),
             this->external_field.z()
@@ -123,12 +127,12 @@ class CartesianExternalInteraction : public CartesianAbstractInteraction {
     };
 };
 
-class CartesianAnisotropyInteraction : public CartesianAbstractInteraction {
+class AnisotropyInteraction : public AbstractInteraction {
   public:
-    CartesianAnisotropyInteraction() {};
+    AnisotropyInteraction() {};
 
     virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
 
         auto &moment = geometry[moment_index];
@@ -150,49 +154,66 @@ class CartesianAnisotropyInteraction : public CartesianAbstractInteraction {
     }
 };
 
-template <CoordSystemConcept CoordSystem> using InteractionRegistry = Registry<IInteraction<CoordSystem>>;
-using CartesianInteractionRegistry = InteractionRegistry<CartesianCoordSystem>;
+using InteractionRegistry = InteractionRegistry<NamespaceCoordSystem>;
+
+}; // namespace cartesian
 
 }; // namespace spindynapy
 
 inline void pyBindInteractions(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | INTERACTIONS | --------
+    py::module_ interaction_module = module.def_submodule("interactions");
 
-    module.doc() = "Интерфейсы взаимодействий между элементами системы.\n"
-                   "Таковыми могут быть потенциальные поля, силы, etc. \n";
+    interaction_module.doc() = "Интерфейсы взаимодействий между элементами системы.\n"
+                               "Таковыми могут быть потенциальные поля, силы, etc. \n";
 
-    py::class_<CartesianAbstractInteraction, std::shared_ptr<CartesianAbstractInteraction>>(module, "CartesianAbstractInteraction")
-        .def("__str__", &CartesianAbstractInteraction::__str__)
-        .def("__repr__", &CartesianAbstractInteraction::__repr__)
+    // -------- | CARTESIAN INTERACTIONS | --------
+    py::module_ cartesian = interaction_module.def_submodule("cartesian");
+
+    using cartesian::AbstractInteraction;
+    using cartesian::AnisotropyInteraction;
+    using cartesian::ExchangeInteraction;
+    using cartesian::ExternalInteraction;
+    using cartesian::InteractionRegistry;
+
+    py::class_<AbstractInteraction, std::shared_ptr<AbstractInteraction>>(cartesian, "AbstractInteraction")
+        .def("__str__", &AbstractInteraction::__str__)
+        .def("__repr__", &AbstractInteraction::__repr__)
         .def(
             "calculate_field_contribution",
-            &CartesianAbstractInteraction::calculateFieldContribution,
-            py::arg("moment_index"), py::arg("geometry"), py::arg("material_registry")
+            &AbstractInteraction::calculateFieldContribution,
+            py::arg("moment_index"),
+            py::arg("geometry"),
+            py::arg("material_registry")
         )
         .doc() = "Базовый интерфейс взаимодействий (сил, полей, etc.)";
 
-    py::class_<CartesianExchangeInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianExchangeInteraction>>(module, "CartesianExchangeInteraction")
+    py::class_<ExchangeInteraction, AbstractInteraction, std::shared_ptr<ExchangeInteraction>>(
+        cartesian, "ExchangeInteraction"
+    )
         .def(py::init<double>(), py::arg("cutoff_radius"))
         .doc() = "Обменное взаимодействие";
 
-    py::class_<CartesianExternalInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianExternalInteraction>>(module, "CartesianExternalInteraction")
-        .def(py::init<const Eigen::Vector3d&>(), py::arg("external_field"))
+    py::class_<ExternalInteraction, AbstractInteraction, std::shared_ptr<ExternalInteraction>>(
+        cartesian, "ExternalInteraction"
+    )
+        .def(py::init<const Eigen::Vector3d &>(), py::arg("external_field"))
         .def(py::init<double, double, double>(), py::arg("sx"), py::arg("sy"), py::arg("sz"))
         .doc() = "Взаимодействие с внешним полем";
 
-    py::class_<CartesianAnisotropyInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianAnisotropyInteraction>>(module, "CartesianAnisotropyInteraction")
+    py::class_<AnisotropyInteraction, AbstractInteraction, std::shared_ptr<AnisotropyInteraction>>(
+        cartesian, "AnisotropyInteraction"
+    )
         .def(py::init())
         .doc() = "оси магнитной анизотропии";
 
-    py::class_<CartesianInteractionRegistry, std::shared_ptr<CartesianInteractionRegistry>>(module, "CartesianInteractionRegistry")
+    py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(cartesian, "InteractionRegistry")
         .def(py::init<>())
-        .def(py::init<RegistryContainer<CartesianAbstractInteraction>>(), py::arg("container"))
-        BUILD_REGISTRY_TEMPLATE_METHODS(CartesianInteractionRegistry)
+        .def(py::init<RegistryContainer<AbstractInteraction>>(), py::arg("container"))
+            BUILD_REGISTRY_TEMPLATE_METHODS(InteractionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных взаимодействий";
-
-    // clang-format on
 }
 
 #endif // ! __INTERACTIONS_HPP__

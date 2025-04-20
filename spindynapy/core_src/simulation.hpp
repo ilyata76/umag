@@ -59,27 +59,43 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
             time,
             geometry->size()
         );
-        // clang-format off
         for (size_t i = 0; i < geometry->size(); ++i) {
-            result += use_descriptions
-                          ? std::format(
-                                "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: {:.5e}",
-                                i, (*geometry)[i].__str__(), total_fields[i].norm()
-                            )
-                          : std::format("{}\t{}\t{:.5e}", i, (*geometry)[i].__str__(), total_fields[i].norm());
+            result +=
+                use_descriptions
+                    ? std::format(
+                          "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: {:.5e} x: "
+                          "{:.5e} y: {:.5e} z: {:.5e}",
+                          i,
+                          (*geometry)[i].__str__(),
+                          total_fields[i].norm(),
+                          total_fields[i].x(),
+                          total_fields[i].y(),
+                          total_fields[i].z()
+                      )
+                    : std::format("{}\t{}\t{:.5e}", i, (*geometry)[i].__str__(), total_fields[i].norm());
             for (const auto &[number, field_vector] : interaction_fields) {
                 result += use_descriptions
-                              ? std::format(", interaction[{}]_norm: {:.5e}", number, field_vector[i].norm())
+                              ? std::format(
+                                    ", interaction[{}]_norm: {:.5e} x: {:.5e} y: {:.5e} z: {:.5e}",
+                                    number,
+                                    field_vector[i].norm(),
+                                    field_vector[i].x(),
+                                    field_vector[i].y(),
+                                    field_vector[i].z()
+                                )
                               : std::format(", {}: {:.5e}", number, field_vector[i].norm());
             }
             result += "\n";
         }
-        // clang-format on
         return result;
     }
 };
 
-using CartesianSimulationStepData = SimulationStepData<CartesianCoordSystem>;
+namespace cartesian {
+
+using SimulationStepData = SimulationStepData<NamespaceCoordSystem>;
+
+};
 
 /**
  * Базовый интерфейс управлятора симуляцией. Вход в программу.
@@ -134,7 +150,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
     };
 
-    virtual void calculateEffectiveFields() {
+    void calculateEffectiveFields() {
         size_t moments_size = this->_geometry->size();
         // если изменилась геометрия
         this->correctBuffers(moments_size);
@@ -185,10 +201,10 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         this->_effective_fields.resize(geometry->size(), EffectiveField::Zero());
     };
 
-    virtual std::string __str__() const { return _geometry->__str__(); };
-    virtual std::string __repr__() const { return _geometry->__repr__(); };
+    std::string __str__() const { return _geometry->__str__(); };
+    std::string __repr__() const { return _geometry->__repr__(); };
 
-    virtual void simulateOneStep() {
+    void simulateOneStep() {
         this->_current_time += this->_dt;
         this->calculateEffectiveFields();
         this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
@@ -200,7 +216,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         ));
     };
 
-    virtual void simulateManySteps(uint steps) {
+    void simulateManySteps(uint steps) {
         for (uint i = 0; i < steps; ++i) {
             this->_current_time += this->_dt;
             this->calculateEffectiveFields();
@@ -214,47 +230,61 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
     };
 
-    virtual std::vector<SimulationStepData<CoordSystem>> &getSteps() { return this->steps; }
+    std::vector<SimulationStepData<CoordSystem>> &getSteps() { return this->steps; }
+    void clearSteps() { return this->steps.clear(); }
 };
 
-using CartesianSimulation = Simulation<CartesianCoordSystem>;
+namespace cartesian {
+
+using Simulation = Simulation<NamespaceCoordSystem>;
+
+};
 
 }; // namespace spindynapy
 
 inline void pyBindSimulation(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | SIMULATION | --------
+    py::module_ simulation_module = module.def_submodule("simulation");
 
-    module.doc() = "Интерфейсы и классы, отвечающие за главный функционал - симуляцию.";
+    simulation_module.doc() = "Интерфейсы и классы, отвечающие за главный функционал - симуляцию.";
 
-    py::class_<CartesianSimulationStepData>(module, "CartesianSimulationStepData")
-        .def_readonly("time", &CartesianSimulationStepData::time)
+    // -------- | CARTESIAN SIMULATION | --------
+    py::module_ cartesian = simulation_module.def_submodule("cartesian");
+
+    using cartesian::AbstractGeometry;
+    using cartesian::AbstractSolver;
+    using cartesian::InteractionRegistry;
+    using cartesian::Simulation;
+    using cartesian::SimulationStepData;
+
+    py::class_<SimulationStepData>(cartesian, "SimulationStepData")
+        .def_readonly("time", &SimulationStepData::time)
         .def_property_readonly(
-            "geometry", 
-            [](const CartesianSimulationStepData& self) {
-                return self.geometry.get();
-            },
+            "geometry",
+            [](const SimulationStepData &self) { return self.geometry.get(); },
             py::return_value_policy::reference_internal
         )
-        .def("__str__", &CartesianSimulationStepData::__str__)
-        .def("as_string", &CartesianSimulationStepData::asString, py::arg("use_descriptions") = true)
-        .def_readonly("total_fields", &CartesianSimulationStepData::total_fields)
-        .def_readonly("interaction_fields", &CartesianSimulationStepData::interaction_fields)
+        .def("__str__", &SimulationStepData::__str__)
+        .def("as_string", &SimulationStepData::asString, py::arg("use_descriptions") = true)
+        .def_readonly("total_fields", &SimulationStepData::total_fields)
+        .def_readonly("interaction_fields", &SimulationStepData::interaction_fields)
         .doc() = "Data structure holding simulation step information";
 
-    py::class_<CartesianSimulation>(module, "CartesianSimulation")
-        .def("__str__", &CartesianSimulation::__str__)
-        .def("__repr__", &CartesianSimulation::__repr__)
-        .def("simulate_one_step", &CartesianSimulation::simulateOneStep)
-        .def("simulate_many_steps", &CartesianSimulation::simulateManySteps, py::arg("steps"))
-        .def("get_steps", &CartesianSimulation::getSteps, py::return_value_policy::reference)
+    py::class_<Simulation>(cartesian, "Simulation")
+        .def("__str__", &Simulation::__str__)
+        .def("__repr__", &Simulation::__repr__)
+        .def("simulate_one_step", &Simulation::simulateOneStep)
+        .def("simulate_many_steps", &Simulation::simulateManySteps, py::arg("steps"))
+        .def("get_steps", &Simulation::getSteps, py::return_value_policy::reference)
+        .def("clear_steps", &Simulation::clearSteps)
         .def(
             py::init<
-                std::shared_ptr<CartesianAbstractGeometry>,
-                std::shared_ptr<CartesianAbstractSolver>,
+                std::shared_ptr<AbstractGeometry>,
+                std::shared_ptr<AbstractSolver>,
                 std::shared_ptr<MaterialRegistry>,
-                std::shared_ptr<CartesianInteractionRegistry>,
+                std::shared_ptr<InteractionRegistry>,
                 double>(),
             py::arg("geometry"),
             py::arg("solver"),
@@ -263,8 +293,6 @@ inline void pyBindSimulation(py::module_ &module) {
             py::arg("dt") = 1e-13
         )
         .doc() = "TODO";
-
-    // clang-format on
 }
 
 #endif // ! __SIMULATION_HPP__

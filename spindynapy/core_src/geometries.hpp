@@ -100,14 +100,16 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     };
 };
 
-using CartesianAbstractGeometry = IGeometry<CartesianCoordSystem>;
+namespace cartesian {
+
+using AbstractGeometry = IGeometry<NamespaceCoordSystem>;
 
 /**
  * Простая геометрия, задаваемая в декартовой системе координат
  */
-class CartesianSimpleGeometry : public CartesianAbstractGeometry {
+class Geometry : public AbstractGeometry {
   protected:
-    MomentsContainer<CartesianCoordSystem> _moments;
+    MomentsContainer<NamespaceCoordSystem> _moments;
     NeighborsContainers _neighbors_cache;
 
     virtual bool hasInNeighborsCanche(size_t index, double cutoff_radius) const override {
@@ -126,26 +128,24 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
     virtual void clearAllNeighborsCache() override { _neighbors_cache.clear(); };
 
   public:
-    CartesianSimpleGeometry(const std::vector<std::shared_ptr<CartesianMoment>> &moments)
-        : _moments(moments) {};
-    CartesianSimpleGeometry(std::vector<std::shared_ptr<CartesianMoment>> &&moments)
-        : _moments(std::move(moments)) {}
-    CartesianSimpleGeometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
+    Geometry(const std::vector<std::shared_ptr<Moment>> &moments) : _moments(moments) {};
+    Geometry(std::vector<std::shared_ptr<Moment>> &&moments) : _moments(std::move(moments)) {}
+    Geometry(const Eigen::MatrixXd &moments, MaterialRegistry &material_registry) {
         if (moments.cols() < 7) {
             throw std::invalid_argument("Expected 7 columns: [x, y, z, sx, sy, sz, material]");
         };
         _moments.reserve(moments.rows());
         for (Eigen::Index i = 0; i < moments.rows(); ++i) {
-            _moments.emplace_back(std::make_shared<CartesianMoment>(
-                CartesianCoordinates(moments(i, 0), moments(i, 1), moments(i, 2)),
-                CartesianDirection(moments(i, 3), moments(i, 4), moments(i, 5)),
+            _moments.emplace_back(std::make_shared<Moment>(
+                Coordinates(moments(i, 0), moments(i, 1), moments(i, 2)),
+                Direction(moments(i, 3), moments(i, 4), moments(i, 5)),
                 material_registry.getElementShared(static_cast<regnum>(moments(i, 6)))
             ));
         }
     };
 
-    virtual CartesianMoment &operator[](size_t index) override { return *this->_moments[index]; };
-    virtual CartesianMoment getFromIndexes(std::vector<size_t> indexes) override {
+    virtual Moment &operator[](size_t index) override { return *this->_moments[index]; };
+    virtual Moment getFromIndexes(std::vector<size_t> indexes) override {
         throw std::logic_error("Operator getFromIndecies Not implemented");
     };
 
@@ -175,14 +175,14 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
     };
 
     virtual std::string __str__() const override {
-        std::string result = "CartesianGeometry : size = " + std::to_string(_moments.size()) + "\n";
+        std::string result = "Geometry : size = " + std::to_string(_moments.size()) + "\n";
         for (const auto &elem : _moments) {
             result += elem->__str__() + "\n";
         }
         return result;
     };
     virtual std::string __repr__() const override {
-        std::string result = "CartesianGeometry(moments=[";
+        std::string result = "Geometry(moments=[";
         for (const auto &elem : _moments) {
             result += elem->__repr__() + ", ";
         }
@@ -192,48 +192,57 @@ class CartesianSimpleGeometry : public CartesianAbstractGeometry {
     };
     virtual size_t size() const override { return _moments.size(); }
 
-    using iterator = std::vector<std::shared_ptr<CartesianMoment>>::iterator;
+    using iterator = std::vector<std::shared_ptr<Moment>>::iterator;
     virtual iterator begin() override { return _moments.begin(); }
     virtual iterator end() override { return _moments.end(); }
 
-    virtual std::unique_ptr<IGeometry<CartesianCoordSystem>> clone() const override {
-        return std::make_unique<CartesianSimpleGeometry>(this->_moments);
+    virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone() const override {
+        return std::make_unique<Geometry>(this->_moments);
     }
 };
+
+}; // namespace cartesian
 
 }; // namespace spindynapy
 
 inline void pyBindGeometries(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | GEOMETRIES | --------
+    py::module_ geometries_module = module.def_submodule("geometries");
 
-    module.doc() = "Модуль геометрий\n"
-                   "Геометрии задают устройство образца, сохраняя в себе\n"
-                   "состояние расположения моментов и их свойств.\n"
-                   "Геометрия также может поставлять ограниченное количество\n"
-                   "обсчитываемых параметров. Может состоять из разных участков разной точности.\n";
+    geometries_module.doc() =
+        "Модуль геометрий\n"
+        "Геометрии задают устройство образца, сохраняя в себе\n"
+        "состояние расположения моментов и их свойств.\n"
+        "Геометрия также может поставлять ограниченное количество\n"
+        "обсчитываемых параметров. Может состоять из разных участков разной точности.\n";
 
-    py::class_<CartesianAbstractGeometry, std::shared_ptr<CartesianAbstractGeometry>>(module, "CartesianAbstractGeometry")
-        .def("__str__", &CartesianAbstractGeometry::__str__)
-        .def("__repr__", &CartesianAbstractGeometry::__repr__)
-        .def("__len__", &CartesianAbstractGeometry::size)
-        .def("get_neighbors", &CartesianAbstractGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
-        .def("__getitem__", &CartesianAbstractGeometry::operator[], py::arg("index"), py::return_value_policy::reference)
+    // -------- | CARTESIAN GEOMETRIES | --------
+    py::module_ cartesian = geometries_module.def_submodule("cartesian");
+
+    using cartesian::AbstractGeometry;
+    using cartesian::Geometry;
+    using cartesian::Moment;
+
+    py::class_<AbstractGeometry, std::shared_ptr<AbstractGeometry>>(cartesian, "AbstractGeometry")
+        .def("__str__", &AbstractGeometry::__str__)
+        .def("__repr__", &AbstractGeometry::__repr__)
+        .def("__len__", &AbstractGeometry::size)
+        .def("get_neighbors", &AbstractGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
+        .def(
+            "__getitem__", &AbstractGeometry::operator[], py::arg("index"), py::return_value_policy::reference
+        )
         .doc() = "TODO";
 
-    py::class_<CartesianSimpleGeometry, CartesianAbstractGeometry, std::shared_ptr<CartesianSimpleGeometry>>(module, "CartesianSimpleGeometry")
+    py::class_<Geometry, AbstractGeometry, std::shared_ptr<Geometry>>(cartesian, "Geometry")
+        .def(py::init<const std::vector<std::shared_ptr<Moment>> &>(), py::arg("moments"))
         .def(
-            py::init<const std::vector<std::shared_ptr<CartesianMoment>>&>(),
-            py::arg("moments")
-        )
-        .def(
-            py::init<const Eigen::MatrixXd &, MaterialRegistry&>(),
-            py::arg("moments"), py::arg("material_registry")
+            py::init<const Eigen::MatrixXd &, MaterialRegistry &>(),
+            py::arg("moments"),
+            py::arg("material_registry")
         )
         .doc() = "Простая геометрия, задаваемая в декартовой системе координат";
-
-    // clang-format on
 }
 
 #endif // ! __GEOMETRIES_BASE_HPP__

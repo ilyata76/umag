@@ -15,7 +15,6 @@
 #include "geometries.hpp"
 #include "types.hpp"
 
-#include <iostream>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -42,17 +41,18 @@ template <CoordSystemConcept CoordSystem> class ISolver {
     }
 };
 
-using CartesianAbstractSolver = ISolver<CartesianCoordSystem>;
+namespace cartesian {
 
-class CartesianLLGSolver : public CartesianAbstractSolver {
+using AbstractSolver = ISolver<NamespaceCoordSystem>;
+
+class LLGSolver : public AbstractSolver {
   public:
-    CartesianLLGSolver() = default;
+    LLGSolver() = default;
 
     virtual void updateMoments(
-        IGeometry<CartesianCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
+        IGeometry<NamespaceCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) override {
         size_t num_moments = geometry.size();
-        std::cout << "\n\nUPDATE MOMENTS\n\n";
 
         // проверка на изменение геометрии
         if (effective_fields.size() != num_moments) {
@@ -66,27 +66,40 @@ class CartesianLLGSolver : public CartesianAbstractSolver {
     };
 };
 
+}; // namespace cartesian
+
 }; // namespace spindynapy
 
 inline void pyBindSolvers(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | SOLVERS | --------
+    py::module_ solvers_module = module.def_submodule("solvers");
 
-    module.doc() = "Модуль решателей\n"
-                   "Решатели (интеграторы) берут на себя задачу эволюционирования\n"
-                   "или любого другого прогрессирования системы в зависимости от\n"
-                   "предоставленных внешних параметров.";
+    solvers_module.doc() = "Модуль решателей\n"
+                           "Решатели (интеграторы) берут на себя задачу эволюционирования\n"
+                           "или любого другого прогрессирования системы в зависимости от\n"
+                           "предоставленных внешних параметров.";
 
-    py::class_<CartesianAbstractSolver, std::shared_ptr<CartesianAbstractSolver>>(module, "CartesianAbstractSolver")
-        .def("update_moments", &CartesianAbstractSolver::updateMoments, py::arg("geometry"), py::arg("effective_fields"), py::arg("dt"))
+    // -------- | CARTESIAN SOLVERS | --------
+    py::module_ cartesian = solvers_module.def_submodule("cartesian");
+
+    using cartesian::AbstractSolver;
+    using cartesian::LLGSolver;
+
+    py::class_<AbstractSolver, std::shared_ptr<AbstractSolver>>(cartesian, "AbstractSolver")
+        .def(
+            "update_moments",
+            &AbstractSolver::updateMoments,
+            py::arg("geometry"),
+            py::arg("effective_fields"),
+            py::arg("dt")
+        )
         .doc() = "по сути - базовый абстрактный солвер, в декартовых координатах";
 
-    py::class_<CartesianLLGSolver, CartesianAbstractSolver, std::shared_ptr<CartesianLLGSolver>>(module, "CartesianLLGSolver")
+    py::class_<LLGSolver, AbstractSolver, std::shared_ptr<LLGSolver>>(cartesian, "LLGSolver")
         .def(py::init<>())
         .doc() = "солвер Ландау-Лифшица-Гильберта в декартовых координатах (классический алгоритм)";
-
-    // clang-format on
 }
 
 #endif // ! __SOLVERS_HPP__

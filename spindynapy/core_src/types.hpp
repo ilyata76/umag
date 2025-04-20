@@ -14,6 +14,7 @@
 #include <memory>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 #include <stdexcept>
 #include <string>
 
@@ -71,7 +72,7 @@ class Material {
         regnum material_number,
         double exchange_constant_J,
         double atomic_magnetic_saturation_magnetization,
-        std::shared_ptr<Anisotropy> anisotropy
+        std::shared_ptr<Anisotropy> anisotropy = nullptr
     )
         : material_number(material_number),
           exchange_constant_J(exchange_constant_J),
@@ -103,44 +104,29 @@ class Region {
     Region(double accuracy) : _accuracy(accuracy) {};
 };
 
-// Собираем концепт шаблона:
-// классы будут как бы независимые. Склейка по координатным системам только через шаблоны
-
-template <typename CoordSystem>
-concept CoordSystemConcept = requires {
-    typename CoordSystem::Moment;
-    typename CoordSystem::Coordinates;
-    typename CoordSystem::Direction;
-    { CoordSystem {}.name } -> std::convertible_to<const char *>;
-};
-
-struct CoordSystem {};
+namespace cartesian {
 
 /**
  * Декартовые координаты
  */
-class CartesianCoordinates {
+class Coordinates {
   protected:
     Eigen::Vector3d _coords;
 
   public:
-    CartesianCoordinates(double x, double y, double z) noexcept : _coords(x, y, z) {};
-    CartesianCoordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
+    Coordinates(double x, double y, double z) noexcept : _coords(x, y, z) {};
+    Coordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
 
     std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _coords(0), _coords(1), _coords(2));
     };
     std::string __repr__() const {
-        return std::format(
-            "CartesianCoordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2)
-        );
+        return std::format("Coordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2));
     };
 
-    double getDistanceFrom(const CartesianCoordinates &other) const {
-        return (this->_coords - other._coords).norm();
-    };
+    double getDistanceFrom(const Coordinates &other) const { return (this->_coords - other._coords).norm(); };
 
-    double getDistanceSquareFrom(const CartesianCoordinates &other) const {
+    double getDistanceSquareFrom(const Coordinates &other) const {
         return (this->_coords - other._coords).squaredNorm();
     };
 
@@ -163,21 +149,19 @@ class CartesianCoordinates {
 /**
  * Вектор в декартовых координатах
  */
-class CartesianDirection {
+class Direction {
   protected:
     Eigen::Vector3d _vector;
 
   public:
-    CartesianDirection(double x, double y, double z) noexcept : _vector(x, y, z) { _vector.normalize(); };
-    CartesianDirection(const Eigen::Vector3d &vector) noexcept : _vector(vector) { _vector.normalize(); };
+    Direction(double x, double y, double z) noexcept : _vector(x, y, z) { _vector.normalize(); };
+    Direction(const Eigen::Vector3d &vector) noexcept : _vector(vector) { _vector.normalize(); };
 
     std::string __str__() const {
         return std::format("{:.3f}\t{:.3f}\t{:.3f}", _vector(0), _vector(1), _vector(2));
     };
     std::string __repr__() const {
-        return std::format(
-            "CartesianDirection(x={:.3f}, y={:.3f}, z={:.3f})", _vector(0), _vector(1), _vector(2)
-        );
+        return std::format("Direction(x={:.3f}, y={:.3f}, z={:.3f})", _vector(0), _vector(1), _vector(2));
     };
 
     void setDirection(double x, double y, double z) {
@@ -199,38 +183,34 @@ class CartesianDirection {
     void normalize() { return _vector.normalize(); }
 };
 
-class CartesianMoment {
+class Moment {
   protected:
-    std::unique_ptr<CartesianCoordinates> _coordinates;
-    std::unique_ptr<CartesianDirection> _direction;
+    std::unique_ptr<Coordinates> _coordinates;
+    std::unique_ptr<Direction> _direction;
     std::shared_ptr<Material> _material;
 
   public:
-    CartesianMoment(
-        const CartesianCoordinates &coordinates,
-        const CartesianDirection &direction,
-        std::shared_ptr<Material> material
+    Moment(
+        const Coordinates &coordinates, const Direction &direction, std::shared_ptr<Material> material
     ) noexcept
-        : _coordinates(std::make_unique<CartesianCoordinates>(coordinates)),
-          _direction(std::make_unique<CartesianDirection>(direction)),
+        : _coordinates(std::make_unique<Coordinates>(coordinates)),
+          _direction(std::make_unique<Direction>(direction)),
           _material(material) {};
 
-    CartesianMoment(
-        CartesianCoordinates &&coordinates, CartesianDirection &&direction, std::shared_ptr<Material> material
-    ) noexcept
-        : _coordinates(std::make_unique<CartesianCoordinates>(std::move(coordinates))),
-          _direction(std::make_unique<CartesianDirection>(std::move(direction))),
+    Moment(Coordinates &&coordinates, Direction &&direction, std::shared_ptr<Material> material) noexcept
+        : _coordinates(std::make_unique<Coordinates>(std::move(coordinates))),
+          _direction(std::make_unique<Direction>(std::move(direction))),
           _material(std::move(material)) {};
 
     /**
      * Получить вектор момента
      */
-    CartesianDirection &getDirection() { return *_direction; };
+    Direction &getDirection() { return *_direction; };
 
     /**
      * Получить расположение момента
      */
-    CartesianCoordinates &getCoordinates() { return *_coordinates; };
+    Coordinates &getCoordinates() { return *_coordinates; };
 
     /**
      * Получить ссылку на метериал
@@ -242,7 +222,7 @@ class CartesianMoment {
     };
     std::string __repr__() const {
         return std::format(
-            "CartesianMoment(coordinates={}, direction={}, material={})",
+            "Moment(coordinates={}, direction={}, material={})",
             _coordinates->__repr__(),
             _direction->__repr__(),
             _material->__repr__()
@@ -250,22 +230,53 @@ class CartesianMoment {
     };
 };
 
-struct CartesianCoordSystem : public CoordSystem {
-    using Moment = CartesianMoment;
-    using Coordinates = CartesianCoordinates;
-    using Direction = CartesianDirection;
-    const char *name = "CartesianCoordSystem";
+} // namespace cartesian
+
+namespace spherical {
+
+class Moment {};
+class Coordinates {};
+class Direction {};
+
+} // namespace spherical
+
+// Собираем концепт шаблона:
+// классы будут как бы независимые. Склейка по координатным системам только через шаблоны
+
+template <typename CoordSystem>
+concept CoordSystemConcept = requires {
+    typename CoordSystem::Moment;
+    typename CoordSystem::Coordinates;
+    typename CoordSystem::Direction;
+    { CoordSystem {}.name } -> std::convertible_to<const char *>;
 };
 
-class SphericalMoment {};
-class SphericalCoordinates {};
-class SphericalDirection {};
+struct CoordSystem {};
 
 struct SphericalCoordSystem : public CoordSystem {
-    using Moment = SphericalMoment;
-    using Coordinates = SphericalCoordinates;
-    using Direction = SphericalDirection;
+    using Moment = spherical::Moment;
+    using Coordinates = spherical::Coordinates;
+    using Direction = spherical::Direction;
     const char *name = "SphericalCoordSystem";
+};
+
+struct CartesianCoordSystem : public CoordSystem {
+    using Moment = cartesian::Moment;
+    using Coordinates = cartesian::Coordinates;
+    using Direction = cartesian::Direction;
+    const char *name = "CoordSystem";
+};
+
+namespace cartesian {
+
+using NamespaceCoordSystem = CartesianCoordSystem;
+
+};
+
+namespace spherical {
+
+using NamespaceCoordSystem = SphericalCoordSystem;
+
 };
 
 }; // namespace spindynapy
@@ -273,14 +284,40 @@ struct SphericalCoordSystem : public CoordSystem {
 inline void pyBindTypes(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | TYPES | --------
+    py::module_ types_module = module.def_submodule("types");
+    types_module.doc() = "Модуль предоставляет базовые абстракные классы и интерфейсы \n"
+                         "  - базовые единицы абстракции \n"
+                         "  - миксины \n\n"
+                         "и их реализации";
 
-    module.doc() = "Модуль предоставляет базовые абстракные классы и интерфейсы \n"
-                   "  - базовые единицы абстракции \n"
-                   "  - миксины \n\n"
-                   "и их реализации";
+    py::class_<Anisotropy, std::shared_ptr<Anisotropy>>(types_module, "Anisotropy")
+        .def("__str__", &Anisotropy::__str__)
+        .doc() = "TODO";
 
-    py::class_<CartesianCoordSystem, std::shared_ptr<CartesianCoordSystem>>(module, "CartesianCoordSystem")
+    py::class_<UniaxialAnisotropy, Anisotropy, std::shared_ptr<UniaxialAnisotropy>>(
+        types_module, "UniaxialAnisotropy"
+    )
+        .def(py::init<const Eigen::Vector3d &, double>(), py::arg("axis"), py::arg("constant"))
+        .def_readwrite("axis", &UniaxialAnisotropy::axis)
+        .def_readwrite("constant", &UniaxialAnisotropy::constant)
+        .doc() = "Uniaxial anisotropy data";
+
+    py::class_<Material, std::shared_ptr<Material>>(types_module, "Material") BIND_STR_REPR(Material)
+        .def(
+            py::init<regnum, double, double, std::shared_ptr<Anisotropy>>(),
+            py::arg("material_number"),
+            py::arg("exchange_constant_J"),
+            py::arg("atomic_magnetic_saturation_magnetization"),
+            py::arg("anisotropy").none(true) = pybind11::none()
+        )
+        .def("get_number", &Material::getNumber)
+        .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
+                 "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";
+
+    py::class_<Region>(module, "Region").def(py::init<double>(), py::arg("accuracy")).doc() = "TODO";
+
+    py::class_<CartesianCoordSystem, std::shared_ptr<CartesianCoordSystem>>(module, "CoordSystem")
         .def(py::init<>())
         .def_readonly("name", &CartesianCoordSystem::name);
 
@@ -288,70 +325,42 @@ inline void pyBindTypes(py::module_ &module) {
         .def(py::init<>())
         .def_readonly("name", &SphericalCoordSystem::name);
 
-    py::class_<Anisotropy, std::shared_ptr<Anisotropy>>(module, "Anisotropy")
-        .def("__str__", &Anisotropy::__str__)
-        .doc() = "TODO";
+    // -------- | CARTESIAN TYPES | --------
+    py::module_ cartesian = types_module.def_submodule("cartesian");
 
-    py::class_<UniaxialAnisotropy, Anisotropy, std::shared_ptr<UniaxialAnisotropy>>(
-        module, "UniaxialAnisotropy"
-    )
-        .def(py::init<const Eigen::Vector3d &, double>(),
-             py::arg("axis"), py::arg("constant"))
-        .def_readwrite("axis", &UniaxialAnisotropy::axis)
-        .def_readwrite("constant", &UniaxialAnisotropy::constant)
-        .doc() = "Uniaxial anisotropy data";
+    using cartesian::Coordinates;
+    using cartesian::Direction;
+    using cartesian::Moment;
 
-    py::class_<Material, std::shared_ptr<Material>>(module, "Material")
-        BIND_STR_REPR(Material)
-        .def(
-            py::init<regnum, double, double, std::shared_ptr<Anisotropy>>(),
-            py::arg("material_number"),
-            py::arg("exchange_constant_J"),
-            py::arg("atomic_magnetic_saturation_magnetization"),
-            py::arg("anisotropy")
-        )
-        .def("get_number", &Material::getNumber)
-        .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
-                 "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";
-
-    py::class_<CartesianCoordinates>(module, "CartesianCoordinates")
-        .def(
-            py::init<double, double, double>(),
-            py::arg("x"), py::arg("y"), py::arg("z")
-        )
+    py::class_<Coordinates>(cartesian, "Coordinates")
+        .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
         .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"))
-        .def("get_distance_from", &CartesianCoordinates::getDistanceFrom, py::arg("other"))
-        .def("get_distance_square_from", &CartesianCoordinates::getDistanceSquareFrom, py::arg("other"))
-        BIND_STR_REPR(CartesianCoordinates)
+        .def("get_distance_from", &Coordinates::getDistanceFrom, py::arg("other"))
+        .def("get_distance_square_from", &Coordinates::getDistanceSquareFrom, py::arg("other"))
+            BIND_STR_REPR(Coordinates)
         .doc() = "Декартовые координаты";
 
-    py::class_<CartesianDirection>(module, "CartesianDirection")
-        .def(
-            py::init<double, double, double>(),
-            py::arg("x"), py::arg("y"), py::arg("z")
-        )
-        .def(py::init<const Eigen::Vector3d &>(), py::arg("vector"))
-        BIND_STR_REPR(CartesianDirection)
+    py::class_<Direction>(cartesian, "Direction")
+        .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
+        .def(py::init<const Eigen::Vector3d &>(), py::arg("vector")) BIND_STR_REPR(Direction)
         .doc() = "Направление в декартовых координатах";
 
-    py::class_<CartesianMoment, std::shared_ptr<CartesianMoment>>(module, "CartesianMoment")
+    py::class_<Moment, std::shared_ptr<Moment>>(cartesian, "Moment")
         .def(
-            py::init([](const CartesianCoordinates &coords, const CartesianDirection &dir, Material& mat) {
-                return new CartesianMoment(coords, dir, std::make_shared<Material>(mat));
+            py::init([](const Coordinates &coords, const Direction &dir, Material &mat) {
+                return new Moment(coords, dir, std::make_shared<Material>(mat));
             }),
-            py::arg("coordinates"), py::arg("direction"), py::arg("material")
-        )
-        BIND_STR_REPR(CartesianMoment)
-        .def("get_material", &CartesianMoment::getMaterial, py::return_value_policy::reference)
-        .def("get_coordinates", &CartesianMoment::getCoordinates, py::return_value_policy::reference)
-        .def("get_direction", &CartesianMoment::getDirection, py::return_value_policy::reference)
+            py::arg("coordinates"),
+            py::arg("direction"),
+            py::arg("material")
+        ) BIND_STR_REPR(Moment)
+        .def("get_material", &Moment::getMaterial, py::return_value_policy::reference)
+        .def("get_coordinates", &Moment::getCoordinates, py::return_value_policy::reference)
+        .def("get_direction", &Moment::getDirection, py::return_value_policy::reference)
         .doc() = "TODO";
 
-    py::class_<Region>(module, "Region")
-        .def(py::init<double>(), py::arg("accuracy"))
-        .doc() = "TODO";
-
-    // clang-format on
+    // -------- | SPHERICAL TYPES | --------
+    py::module_ spherical = types_module.def_submodule("spherical");
 }
 #endif // ! __TYPES_HPP__
 
@@ -373,6 +382,6 @@ inline void pyBindTypes(py::module_ &module) {
 - Решатели, солверы
   - реализуют собственное наследование по типу солвера ("сделай шаг" - а какой уже солвер решает)
   - зависят от системы координат (делаем через шаблонные методы и if constexpr elsif else throw exception)
-  - в питон будут всё равно ретранслироваться по типу CartesianLLGSolver...
+  - в питон будут всё равно ретранслироваться по типу LLGSolver...
 
 */

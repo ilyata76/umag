@@ -78,26 +78,26 @@ using RegionRegistry = Registry<Region>;
 inline void pyBindRegistries(py::module_ &module) {
     using namespace spindynapy;
 
-    // clang-format off
+    // -------- | REGISTRIES | --------
+    py::module_ registries_module = module.def_submodule("registries");
 
-    module.doc() = " Регистры - контейнеры, хранящие в себе экземпляры переиспользуемых классов,\n"
-                   " которые задают базовые настройки симуляции (например, свойства конкретного материала).\n"
-                   " У регистров может быть расширенный функционал.\n"
-                   " Реализуются для паттерна \"легковес\". Живут всю программу.";
+    registries_module.doc() =
+        " Регистры - контейнеры, хранящие в себе экземпляры переиспользуемых классов,\n"
+        " которые задают базовые настройки симуляции (например, свойства конкретного материала).\n"
+        " У регистров может быть расширенный функционал.\n"
+        " Реализуются для паттерна \"легковес\". Живут всю программу.";
 
-    py::class_<MaterialRegistry, std::shared_ptr<MaterialRegistry>>(module, "MaterialRegistry")
+    py::class_<MaterialRegistry, std::shared_ptr<MaterialRegistry>>(registries_module, "MaterialRegistry")
         .def(py::init<>())
         .def(py::init<RegistryContainer<Material>>(), py::arg("container"))
-        BUILD_REGISTRY_TEMPLATE_METHODS(MaterialRegistry)
+            BUILD_REGISTRY_TEMPLATE_METHODS(MaterialRegistry)
         .doc() = "Интерфейс для регистра-контейнера для материалов";
 
-    py::class_<RegionRegistry, std::shared_ptr<RegionRegistry>>(module, "RegionRegistry")
+    py::class_<RegionRegistry, std::shared_ptr<RegionRegistry>>(registries_module, "RegionRegistry")
         .def(py::init<>())
         .def(py::init<RegistryContainer<Region>>(), py::arg("container"))
-        BUILD_REGISTRY_TEMPLATE_METHODS(RegionRegistry)
+            BUILD_REGISTRY_TEMPLATE_METHODS(RegionRegistry)
         .doc() = "Интерфейс для регистра-контейнера для разных областей материалов";
-
-    // clang-format on
 }
 
 #endif // ! __REGISTRIES_HPP__
