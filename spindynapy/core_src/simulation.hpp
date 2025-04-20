@@ -33,7 +33,9 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
     std::unique_ptr<IGeometry<CoordSystem>> geometry;
     // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
     EffectiveFieldVector total_fields;
-    // STEP BUFFER <INTERACTION REGISTRY NUMBER, FIELD MASSIVE>
+    // STEP BUFFER <INTERACTION REGISTRY NUMBER, FIELD MASSIVE> связки через ИНДЕКСЫ
+    // т.е. inter_fields[0] - список конкретного поля по индексам.
+    // inter_fields[0][100] - конкретное поле на 100 атоме
     std::unordered_map<regnum, EffectiveFieldVector> interaction_fields;
 
     // Конструктор
@@ -57,21 +59,18 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
             time,
             geometry->size()
         );
-        // auto str_template_common = use_descriptions ? "  [{}] moment: {}, total_field_norm: {:.5e}" : "{}
-        // {} {:.5e}"; auto str_template_interactions = use_descriptions ? " interaction[{}]_norm:{:.5e}" :
-        // "{}:{:.5e}";
         // clang-format off
         for (size_t i = 0; i < geometry->size(); ++i) {
             result += use_descriptions
                           ? std::format(
-                                "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: {:.5e}, ",
+                                "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: {:.5e}",
                                 i, (*geometry)[i].__str__(), total_fields[i].norm()
                             )
                           : std::format("{}\t{}\t{:.5e}", i, (*geometry)[i].__str__(), total_fields[i].norm());
             for (const auto &[number, field_vector] : interaction_fields) {
                 result += use_descriptions
-                              ? std::format(",\tinteraction[{}]_norm: {:.5e}", number, field_vector[i].norm())
-                              : std::format("\t{}: {:.5e}", number, field_vector[i].norm());
+                              ? std::format(", interaction[{}]_norm: {:.5e}", number, field_vector[i].norm())
+                              : std::format(", {}: {:.5e}", number, field_vector[i].norm());
             }
             result += "\n";
         }

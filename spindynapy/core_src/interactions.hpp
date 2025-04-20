@@ -14,14 +14,12 @@
 #include <format>
 #include <memory>
 #include <pybind11/pybind11.h>
+#include <stdexcept>
 #include <string>
 
 namespace py = pybind11;
 
 namespace spindynapy {
-
-// Определим тип для эффективного поля
-using EffectiveField = Eigen::Vector3d;
 
 /**
  * Базовый интерфейс взаимодействий (сил, полей, etc.)
@@ -71,7 +69,7 @@ class CartesianExchangeInteraction : public CartesianAbstractInteraction {
 
         // величина магнитного момента
         auto atomic_magnetic_moments_norm =
-            current_material.atomic_magnetic_moment * constants::BOHR_MAGNETON;
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
         const auto GENERALIZED_PREFIX = current_material.exchange_constant_J / atomic_magnetic_moments_norm;
 
         auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
@@ -90,6 +88,66 @@ class CartesianExchangeInteraction : public CartesianAbstractInteraction {
     virtual std::string __repr__() const override {
         return std::format("CartesianExchangeInteraction(cutoff_radius={})", _cutoff_radius);
     };
+};
+
+class CartesianExternalInteraction : public CartesianAbstractInteraction {
+  protected:
+    Eigen::Vector3d external_field;
+
+  public:
+    CartesianExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
+    CartesianExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
+
+    virtual EffectiveField calculateFieldContribution(
+        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) const override {
+        return this->external_field;
+    }
+
+    virtual std::string __str__() const override {
+        return std::format(
+            "CartesianExternalInteraction(field=({}, {}, {}))",
+            this->external_field.x(),
+            this->external_field.y(),
+            this->external_field.z()
+        );
+    };
+
+    virtual std::string __repr__() const override {
+        return std::format(
+            "CartesianExternalInteraction(sx={}, sy={}, sz={})",
+            this->external_field.x(),
+            this->external_field.y(),
+            this->external_field.z()
+        );
+    };
+};
+
+class CartesianAnisotropyInteraction : public CartesianAbstractInteraction {
+  public:
+    CartesianAnisotropyInteraction() {};
+
+    virtual EffectiveField calculateFieldContribution(
+        size_t moment_index, IGeometry<CartesianCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) const override {
+
+        auto &moment = geometry[moment_index];
+        auto &material = moment.getMaterial();
+        auto anisotropy = material.anisotropy;
+        auto atomic_magnetic_moments_norm =
+            material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+
+        if (!anisotropy) {
+            return EffectiveField::Zero(); // Нет анизотропии
+        }
+
+        if (auto uniaxial = dynamic_cast<UniaxialAnisotropy *>(anisotropy.get())) {
+            return 2 * uniaxial->constant / atomic_magnetic_moments_norm *
+                   moment.getDirection().asVector().dot(uniaxial->axis) * uniaxial->axis;
+        }
+
+        throw std::invalid_argument("Unsupported anisotropy type");
+    }
 };
 
 template <CoordSystemConcept CoordSystem> using InteractionRegistry = Registry<IInteraction<CoordSystem>>;
@@ -118,6 +176,15 @@ inline void pyBindInteractions(py::module_ &module) {
     py::class_<CartesianExchangeInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianExchangeInteraction>>(module, "CartesianExchangeInteraction")
         .def(py::init<double>(), py::arg("cutoff_radius"))
         .doc() = "Обменное взаимодействие";
+
+    py::class_<CartesianExternalInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianExternalInteraction>>(module, "CartesianExternalInteraction")
+        .def(py::init<const Eigen::Vector3d&>(), py::arg("external_field"))
+        .def(py::init<double, double, double>(), py::arg("sx"), py::arg("sy"), py::arg("sz"))
+        .doc() = "Взаимодействие с внешним полем";
+
+    py::class_<CartesianAnisotropyInteraction, CartesianAbstractInteraction, std::shared_ptr<CartesianAnisotropyInteraction>>(module, "CartesianAnisotropyInteraction")
+        .def(py::init())
+        .doc() = "оси магнитной анизотропии";
 
     py::class_<CartesianInteractionRegistry, std::shared_ptr<CartesianInteractionRegistry>>(module, "CartesianInteractionRegistry")
         .def(py::init<>())

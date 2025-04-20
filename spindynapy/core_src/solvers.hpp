@@ -13,7 +13,6 @@
 // через функции, вызов которых разрешается при раскрытии <темплейта CoordSystem>
 
 #include "geometries.hpp"
-#include "interactions.hpp"
 #include "types.hpp"
 
 #include <iostream>

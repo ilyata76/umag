@@ -14,6 +14,7 @@
 #include <memory>
 #include <pybind11/eigen.h>
 #include <pybind11/pybind11.h>
+#include <stdexcept>
 #include <string>
 
 namespace py = pybind11;
@@ -25,6 +26,34 @@ namespace spindynapy {
 
 typedef short regnum;
 
+// Определим тип для эффективного поля
+using EffectiveField = Eigen::Vector3d;
+
+// Базовый класс для анизотропии (НЕ понятно: как делить анизотропию по CoordSystem?)
+class Anisotropy {
+  protected:
+    Anisotropy() = default;
+
+  public:
+    virtual ~Anisotropy() = default;
+    virtual std::string __str__() const { throw std::logic_error("Method __str__ Not implemented"); };
+};
+
+class UniaxialAnisotropy : public Anisotropy {
+  public:
+    Eigen::Vector3d axis; // Ось анизотропии (нормализованная)
+    double constant;      // Константа анизотропии K (Дж/м³)
+
+    UniaxialAnisotropy(const Eigen::Vector3d &axis, double constant)
+        : axis(axis.normalized()), constant(constant) {}
+
+    std::string __str__() const override {
+        return std::format(
+            "UniaxialAnisotropy(axis=({}, {}, {}), constant={:.2e})", axis.x(), axis.y(), axis.z(), constant
+        );
+    }
+};
+
 /**
  * (Интерфейс) Базовая единица абстракции - свойства материала.
  * Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.
@@ -33,22 +62,31 @@ typedef short regnum;
  */
 class Material {
   public:
-    double exchange_constant_J;    //
-    double atomic_magnetic_moment; // в магнетонах бора
     regnum material_number;
+    double exchange_constant_J;                      //
+    double atomic_magnetic_saturation_magnetization; // в магнетонах бора
+    std::shared_ptr<Anisotropy> anisotropy;
 
-    Material(regnum material_number, double exchange_constant_J, double atomic_magnetic_moment)
+    Material(
+        regnum material_number,
+        double exchange_constant_J,
+        double atomic_magnetic_saturation_magnetization,
+        std::shared_ptr<Anisotropy> anisotropy
+    )
         : material_number(material_number),
           exchange_constant_J(exchange_constant_J),
-          atomic_magnetic_moment(atomic_magnetic_moment) {};
+          atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
+          anisotropy(anisotropy) {};
 
     regnum getNumber() const { return this->material_number; };
     std::string __str__() const { return std::to_string(this->material_number); };
     std::string __repr__() const {
         return std::format(
-            "Material(material_number={}, exchange_constant_J={})",
+            "Material(material_number={}, exchange_constant_J={}, "
+            "atomic_magnetic_saturation_magnetization={})",
             this->material_number,
-            this->exchange_constant_J
+            this->exchange_constant_J,
+            this->atomic_magnetic_saturation_magnetization
         );
     }
 
@@ -250,13 +288,27 @@ inline void pyBindTypes(py::module_ &module) {
         .def(py::init<>())
         .def_readonly("name", &SphericalCoordSystem::name);
 
+    py::class_<Anisotropy, std::shared_ptr<Anisotropy>>(module, "Anisotropy")
+        .def("__str__", &Anisotropy::__str__)
+        .doc() = "TODO";
+
+    py::class_<UniaxialAnisotropy, Anisotropy, std::shared_ptr<UniaxialAnisotropy>>(
+        module, "UniaxialAnisotropy"
+    )
+        .def(py::init<const Eigen::Vector3d &, double>(),
+             py::arg("axis"), py::arg("constant"))
+        .def_readwrite("axis", &UniaxialAnisotropy::axis)
+        .def_readwrite("constant", &UniaxialAnisotropy::constant)
+        .doc() = "Uniaxial anisotropy data";
+
     py::class_<Material, std::shared_ptr<Material>>(module, "Material")
         BIND_STR_REPR(Material)
         .def(
-            py::init<regnum, double, double>(),
+            py::init<regnum, double, double, std::shared_ptr<Anisotropy>>(),
             py::arg("material_number"),
             py::arg("exchange_constant_J"),
-            py::arg("atomic_magnetic_moment")
+            py::arg("atomic_magnetic_saturation_magnetization"),
+            py::arg("anisotropy")
         )
         .def("get_number", &Material::getNumber)
         .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"

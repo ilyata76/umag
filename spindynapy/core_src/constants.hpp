@@ -12,9 +12,9 @@ namespace py = pybind11;
 
 namespace spindynapy::constants {
 
-constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1e-6;
+constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1.256637061e-6; // Н/А^2 или Гн/м
 constexpr auto NUMBER_PI = 3.14159;
-constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // J/T (или A*m^2)
+constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // Дж/Тл (или А*м^2)
 
 namespace sci {
 

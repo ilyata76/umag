@@ -8,8 +8,8 @@ from spindynapy.core.geometries import CartesianSimpleGeometry
 from spindynapy.core.simulation import CartesianSimulation
 from spindynapy.core.solvers import CartesianLLGSolver
 from spindynapy.core.registries import MaterialRegistry
-from spindynapy.core.interactions import CartesianInteractionRegistry, CartesianExchangeInteraction
-from spindynapy.core.types import Material
+from spindynapy.core.interactions import CartesianInteractionRegistry, CartesianExchangeInteraction, CartesianExternalInteraction, CartesianAnisotropyInteraction
+from spindynapy.core.types import Material, UniaxialAnisotropy
 
 linear_chain = np.array([
     [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
@@ -42,20 +42,28 @@ class MaterialEnum(Enum):
 
 class InteractionEnum(Enum):
     EXCHANGE = 0
+    EXTERNAL = 1
+    ANISOTROPY = 2
 
 
 co_mat = Material(
     MaterialEnum.COBALT.value,  # должен соответствовать с ID из MaterialRegistry!
     6.064e-21,
-    1.72
+    1.72,
+    anisotropy=UniaxialAnisotropy(np.array([1, 0, 0]), 5e-24)
 )
 
 exchange_interaction = CartesianExchangeInteraction(cutoff_radius=5)
+external_interaction = CartesianExternalInteraction(100, 100, 100)
+anisotropy_interaction = CartesianAnisotropyInteraction()
 
 material_registry = MaterialRegistry({MaterialEnum.COBALT.value: co_mat})
 llg_solver = CartesianLLGSolver()
 interaction_registry = CartesianInteractionRegistry(
-    {InteractionEnum.EXCHANGE.value: exchange_interaction}
+    {InteractionEnum.EXCHANGE.value: exchange_interaction,
+     InteractionEnum.EXTERNAL.value: external_interaction,
+     InteractionEnum.ANISOTROPY.value: anisotropy_interaction
+    }
 )
 geometry = CartesianSimpleGeometry(linear_chain, material_registry)
 
@@ -85,7 +93,7 @@ simulation.simulate_many_steps(1000)
 
 print(time.time() - old)
 
-# print(simulation.get_steps())
+print(simulation.get_steps()[-1].as_string(False))
 
 # with open("./a.txt", mode="w") as file:
 #     file.write()
