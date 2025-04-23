@@ -11,6 +11,7 @@
 #include "registries.hpp"
 #include "types.hpp"
 
+#include <cmath>
 #include <format>
 #include <memory>
 #include <pybind11/pybind11.h>
@@ -154,6 +155,54 @@ class AnisotropyInteraction : public AbstractInteraction {
     }
 };
 
+class DemagnetizationInteraction : public AbstractInteraction {
+  protected:
+    std::string _strategy;
+    double _cutoff_radius;
+
+  public:
+    DemagnetizationInteraction(double cutoff_radius, std::string strategy = "cutoff")
+        : _cutoff_radius(cutoff_radius), _strategy(strategy) {
+        if (strategy != "cutoff") {
+            throw std::invalid_argument("Invalid strategy string");
+        }
+    };
+
+    virtual EffectiveField calculateFieldContribution(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) const override {
+        // if cutoff
+        EffectiveField demagnetization_field = EffectiveField::Zero();
+        auto &current_moment = geometry[moment_index];
+        auto &current_material = current_moment.getMaterial();
+        auto neighbor_indices = geometry.getNeighbors(moment_index, _cutoff_radius);
+        // auto neighbor_moments = geometry.getFromIndexes(neighbor_indices)
+
+        auto atomic_magnetic_moments_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+
+        for (size_t neighbor_index : neighbor_indices) {
+            auto &neighbor_moment = geometry[neighbor_index];
+            auto distance_vector =
+                neighbor_moment.getCoordinates().asVector() - current_moment.getCoordinates().asVector();
+            auto neighbor_atomistic_moment =
+                neighbor_moment.getMaterial().atomic_magnetic_saturation_magnetization *
+                constants::BOHR_MAGNETON;
+            auto distance_norm = distance_vector.norm();
+
+            demagnetization_field +=
+                neighbor_atomistic_moment *
+                (neighbor_moment.getDirection().asVector() / pow(distance_norm, 3) -
+                 (3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /
+                     pow(distance_norm, 5));
+        }
+        demagnetization_field =
+            (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
+
+        return demagnetization_field;
+    }
+};
+
 using InteractionRegistry = InteractionRegistry<NamespaceCoordSystem>;
 
 }; // namespace cartesian
@@ -174,6 +223,7 @@ inline void pyBindInteractions(py::module_ &module) {
 
     using cartesian::AbstractInteraction;
     using cartesian::AnisotropyInteraction;
+    using cartesian::DemagnetizationInteraction;
     using cartesian::ExchangeInteraction;
     using cartesian::ExternalInteraction;
     using cartesian::InteractionRegistry;
@@ -208,6 +258,12 @@ inline void pyBindInteractions(py::module_ &module) {
     )
         .def(py::init())
         .doc() = "оси магнитной анизотропии";
+
+    py::class_<DemagnetizationInteraction, AbstractInteraction, std::shared_ptr<DemagnetizationInteraction>>(
+        cartesian, "DemagnetizationInteraction"
+    )
+        .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
+        .doc() = "demag";
 
     py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(cartesian, "InteractionRegistry")
         .def(py::init<>())

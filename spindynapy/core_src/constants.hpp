@@ -14,8 +14,8 @@ namespace spindynapy::constants {
 
 constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1.256637061e-6; // Н/А^2 или Гн/м
 constexpr auto NUMBER_PI = 3.14159;
-constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // Дж/Тл (или А*м^2)
-constexpr auto PLANK_CONSTANT = 6.62607015e-34; // Дж/Гц
+constexpr auto BOHR_MAGNETON = 9.2740100783e-24;                        // Дж/Тл (или А*м^2)
+constexpr auto PLANK_CONSTANT = 6.62607015e-34;                         // Дж/Гц
 constexpr auto REDUCED_PLANK_CONSTANT = PLANK_CONSTANT / 2 / NUMBER_PI; // Дж * сек
 
 namespace sci {

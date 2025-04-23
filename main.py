@@ -11,6 +11,7 @@ from spindynapy.core.interactions.cartesian import (  # type: ignore
     ExchangeInteraction,
     ExternalInteraction,
     AnisotropyInteraction,
+    DemagnetizationInteraction
 )
 from spindynapy.core.types import Material, UniaxialAnisotropy  # type: ignore
 
@@ -22,24 +23,30 @@ linear_chain = np.array(
         [3.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
         [4.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
         [5.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
-        # *[[i, 0.0, 0.0, 1.0, 0.0, 0.0, 1] for i in range(5, 1000)],
+        # [[i, 0.0, 0.0, 1.0, 0.0, 0.0, 1] for i in range(5, 1000)],
     ]
 )
 
 print("O!")
 
+nm = 1e-9
 cubic_lattice = np.array(
     [
-        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2],
-        [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 2],
-        [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2],
-        [0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 2],
-        [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2],
-        [1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 2],
-        [1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2],
-        [1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 2],
+        [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1],
+        [0.0, 0.0, 1.0 * nm, 1.0, 1.0, 1.0, 1],
+        [0.0, 1.0 * nm, 0.0, 1.0, 1.0, 1.0, 1],
+        [0.0, 1.0 * nm, 1.0 * nm, 1.0, 1.0, 1.0, 1],
+        [1.0 * nm, 0.0, 0.0, 1.0, 1.0, 1.0, 1],
+        [1.0 * nm, 0.0, 1.0 * nm, 1.0, 1.0, 1.0, 1],
+        [1.0 * nm, 1.0 * nm, 0.0, 1.0, 1.0, 1.0, 1],
+        [1.0 * nm, 1.0 * nm, 1.0 * nm, 1.0, 1.0, 1.0, 1],
     ]
 )
+
+pair = np.array([
+    [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
+    [3.5 * nm, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
+])
 
 
 class MaterialEnum(Enum):
@@ -50,6 +57,7 @@ class InteractionEnum(Enum):
     EXCHANGE = 0
     EXTERNAL = 1
     ANISOTROPY = 2
+    DEMAGNETIZATION = 3
 
 
 co_mat = Material(
@@ -62,6 +70,7 @@ co_mat = Material(
 exchange_interaction = ExchangeInteraction(cutoff_radius=5)
 external_interaction = ExternalInteraction(100, 100, 100)
 anisotropy_interaction = AnisotropyInteraction()
+demagnetization_interaction = DemagnetizationInteraction(cutoff_radius=5, strategy="cutoff")
 
 material_registry = MaterialRegistry({MaterialEnum.COBALT.value: co_mat})
 llg_solver = LLGSolver()
@@ -70,9 +79,10 @@ interaction_registry = InteractionRegistry(
         InteractionEnum.EXCHANGE.value: exchange_interaction,
         InteractionEnum.EXTERNAL.value: external_interaction,
         InteractionEnum.ANISOTROPY.value: anisotropy_interaction,
+        InteractionEnum.DEMAGNETIZATION.value: demagnetization_interaction,
     }
 )
-geometry = Geometry(linear_chain, material_registry)
+geometry = Geometry(cubic_lattice, material_registry)
 
 simulation = Simulation(geometry, llg_solver, material_registry, interaction_registry)
 

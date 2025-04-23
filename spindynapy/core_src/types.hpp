@@ -138,6 +138,8 @@ class Coordinates {
         return;
     }
 
+    Eigen::Vector3d &asVector() { return this->_coords; }
+
     void setCoordinates(Eigen::Vector3d coords) {
         _coords[0] = coords[0];
         _coords[1] = coords[1];
