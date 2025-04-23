@@ -204,7 +204,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     std::string __str__() const { return _geometry->__str__(); };
     std::string __repr__() const { return _geometry->__repr__(); };
 
-    void simulateOneStep() {
+    void simulateOneStep(bool save_step = false) {
         this->_current_time += this->_dt;
         this->calculateEffectiveFields();
         this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
@@ -216,17 +216,9 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         ));
     };
 
-    void simulateManySteps(uint steps) {
+    void simulateManySteps(uint steps, uint save_every_step = 1) {
         for (uint i = 0; i < steps; ++i) {
-            this->_current_time += this->_dt;
-            this->calculateEffectiveFields();
-            this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
-            this->steps.push_back(SimulationStepData<CoordSystem>(
-                this->_current_time,
-                this->_geometry->clone(),
-                this->_effective_fields,
-                this->_interaction_effective_fields
-            ));
+            simulateOneStep(i % save_every_step == 0);
         }
     };
 
@@ -275,8 +267,13 @@ inline void pyBindSimulation(py::module_ &module) {
     py::class_<Simulation>(cartesian, "Simulation")
         .def("__str__", &Simulation::__str__)
         .def("__repr__", &Simulation::__repr__)
-        .def("simulate_one_step", &Simulation::simulateOneStep)
-        .def("simulate_many_steps", &Simulation::simulateManySteps, py::arg("steps"))
+        .def("simulate_one_step", &Simulation::simulateOneStep, py::arg("save_step") = false)
+        .def(
+            "simulate_many_steps",
+            &Simulation::simulateManySteps,
+            py::arg("steps"),
+            py::arg("save_every_step") = 1
+        )
         .def("get_steps", &Simulation::getSteps, py::return_value_policy::reference)
         .def("clear_steps", &Simulation::clearSteps)
         .def(
