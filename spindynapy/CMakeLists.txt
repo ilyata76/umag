@@ -19,6 +19,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development)
 
 # Зависимости
+
+# OpenMP должен поставляться через API компилятора
+find_package(OpenMP REQUIRED)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found: ${OpenMP_CXX_LIBRARIES}")
+else()
+    message(FATAL_ERROR "OpenMP not found. Please install OpenMP (e.g., libomp-dev on Ubuntu).")
+endif()
+
 include(${CMAKE_SOURCE_DIR}/cpm/cmake/CPM.cmake)
 
 CPMAddPackage(
@@ -53,7 +62,13 @@ pybind11_add_module(
     ${HEADERS}
     ${SOURCES}
 )
-target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module)
+
+target_include_directories(${PROJECT_NAME} PUBLIC
+    ${eigen_SOURCE_DIR}
+    ${pybind11_SOURCE_DIR}
+)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module OpenMP::OpenMP_CXX)
 
 # Копирует compile_commands.json в корень проекта после конфигурации
 add_custom_command(

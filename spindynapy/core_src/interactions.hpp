@@ -32,7 +32,8 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
   public:
     virtual ~IInteraction() = default;
 
-    virtual void saveStepBuffer(std::vector<EffectiveField> buffer_from) {
+    virtual void
+    prepareData(size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry) {
         throw std::logic_error("Method saveStepBuffer Not implemented");
     }
 
@@ -62,6 +63,13 @@ class ExchangeInteraction : public AbstractInteraction {
 
   public:
     ExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
+
+    virtual void prepareData(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) override {
+        // обновить кэш по соседям
+        geometry.getNeighbors(moment_index, this->_cutoff_radius);
+    }
 
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
@@ -103,6 +111,12 @@ class ExternalInteraction : public AbstractInteraction {
     ExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
     ExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
 
+    virtual void prepareData(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) override {
+        return;
+    }
+
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
@@ -131,6 +145,12 @@ class ExternalInteraction : public AbstractInteraction {
 class AnisotropyInteraction : public AbstractInteraction {
   public:
     AnisotropyInteraction() {};
+
+    virtual void prepareData(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) override {
+        return;
+    }
 
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
@@ -168,6 +188,14 @@ class DemagnetizationInteraction : public AbstractInteraction {
         }
     };
 
+    virtual void prepareData(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    ) override {
+        // if cutoff
+        // обновить кэш по соседям
+        geometry.getNeighbors(moment_index, this->_cutoff_radius);
+    }
+
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
@@ -184,13 +212,13 @@ class DemagnetizationInteraction : public AbstractInteraction {
         for (size_t neighbor_index : neighbor_indices) {
             auto &neighbor_moment = geometry[neighbor_index];
             auto distance_vector =
-                neighbor_moment.getCoordinates().asVector() - current_moment.getCoordinates().asVector();
+                current_moment.getCoordinates().asVector() - neighbor_moment.getCoordinates().asVector();
             auto neighbor_atomistic_moment =
                 neighbor_moment.getMaterial().atomic_magnetic_saturation_magnetization *
                 constants::BOHR_MAGNETON;
             auto distance_norm = distance_vector.norm();
 
-            demagnetization_field +=
+            demagnetization_field -=
                 neighbor_atomistic_moment *
                 (neighbor_moment.getDirection().asVector() / pow(distance_norm, 3) -
                  (3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /

@@ -17,6 +17,7 @@
 #include <object.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -78,7 +79,6 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     virtual ~IGeometry() = default;
 
     virtual std::string __str__() const { return nullptr; };
-    virtual std::string __repr__() const { return nullptr; };
 
     virtual CoordSystem::Moment &operator[](size_t index) {
         throw std::logic_error("Operator [index] Not implemented");
@@ -175,20 +175,11 @@ class Geometry : public AbstractGeometry {
     };
 
     virtual std::string __str__() const override {
-        std::string result = "Geometry : size = " + std::to_string(_moments.size()) + "\n";
+        std::stringstream ss;
         for (const auto &elem : _moments) {
-            result += elem->__str__() + "\n";
+            ss << "\n" << elem->__str__();
         }
-        return result;
-    };
-    virtual std::string __repr__() const override {
-        std::string result = "Geometry(moments=[";
-        for (const auto &elem : _moments) {
-            result += elem->__repr__() + ", ";
-        }
-        result.pop_back();
-        result.pop_back();
-        return result + "])";
+        return ss.str();
     };
     virtual size_t size() const override { return _moments.size(); }
 
@@ -197,7 +188,12 @@ class Geometry : public AbstractGeometry {
     virtual iterator end() override { return _moments.end(); }
 
     virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone() const override {
-        return std::make_unique<Geometry>(this->_moments);
+        std::vector<std::shared_ptr<Moment>> cloned_moments;
+        cloned_moments.reserve(_moments.size());
+        for (const auto &moment : _moments) {
+            cloned_moments.push_back(moment->clone());
+        }
+        return std::make_unique<Geometry>(cloned_moments);
     }
 };
 
@@ -227,7 +223,6 @@ inline void pyBindGeometries(py::module_ &module) {
 
     py::class_<AbstractGeometry, std::shared_ptr<AbstractGeometry>>(cartesian, "AbstractGeometry")
         .def("__str__", &AbstractGeometry::__str__)
-        .def("__repr__", &AbstractGeometry::__repr__)
         .def("__len__", &AbstractGeometry::size)
         .def("get_neighbors", &AbstractGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
         .def(

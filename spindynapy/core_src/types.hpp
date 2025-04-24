@@ -10,6 +10,8 @@
  * Все процессы должны зависеть от этих интерфейсов.
  */
 
+#include "constants.hpp"
+
 #include <format>
 #include <memory>
 #include <pybind11/eigen.h>
@@ -63,20 +65,27 @@ class UniaxialAnisotropy : public Anisotropy {
  */
 class Material {
   public:
-    regnum material_number;
-    double exchange_constant_J;                      //
-    double atomic_magnetic_saturation_magnetization; // в магнетонах бора
-    std::shared_ptr<Anisotropy> anisotropy;
+    regnum material_number;     // порядковый номер
+    double exchange_constant_J; // обменный интеграл
+    double atomic_magnetic_saturation_magnetization; // намагниченность насыщения в магнетонах бора
+    std::shared_ptr<Anisotropy> anisotropy; // присущая материалу магнитная анизотропия
+    double gyromagnetic_ratio; // гиромагнитное отношение
+    double damping_constant;   // демпфирующая константа Гильберта
 
+    /** Гиромагнитное отношение зависит от эффективного фактора Ланде */
     Material(
         regnum material_number,
         double exchange_constant_J,
         double atomic_magnetic_saturation_magnetization,
+        double gyromagnetic_ratio = constants::FREE_SPIN_GYROMAGNETIC_RATIO, // ~=~ Co Ni Fe
+        double damping_constant = 0.1,
         std::shared_ptr<Anisotropy> anisotropy = nullptr
     )
         : material_number(material_number),
           exchange_constant_J(exchange_constant_J),
           atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
+          damping_constant(damping_constant),
+          gyromagnetic_ratio(gyromagnetic_ratio),
           anisotropy(anisotropy) {};
 
     regnum getNumber() const { return this->material_number; };
@@ -118,7 +127,7 @@ class Coordinates {
     Coordinates(const Eigen::Vector3d &coords) noexcept : _coords(coords) {};
 
     std::string __str__() const {
-        return std::format("{:.3f}\t{:.3f}\t{:.3f}", _coords(0), _coords(1), _coords(2));
+        return std::format("{:.3f}\t{:.3f}\t{:.3f}", _coords(0) * 1e10, _coords(1) * 1e10, _coords(2) * 1e10);
     };
     std::string __repr__() const {
         return std::format("Coordinates(x={:.3f}, y={:.3f}, z={:.3f})", _coords(0), _coords(1), _coords(2));
@@ -209,6 +218,12 @@ class Moment {
      */
     Direction &getDirection() { return *_direction; };
 
+    void setDirection(double sx, double sy, double sz) { this->_direction->setDirection(sx, sy, sz); }
+
+    void setDirection(Eigen::Vector3d new_direction_vector) {
+        this->_direction->setDirection(new_direction_vector);
+    }
+
     /**
      * Получить расположение момента
      */
@@ -219,8 +234,12 @@ class Moment {
      */
     Material &getMaterial() { return *_material; };
 
+    std::shared_ptr<Moment> clone() const {
+        return std::make_shared<Moment>(*_coordinates, *_direction, _material);
+    }
+
     std::string __str__() const {
-        return _coordinates->__str__() + "\t" + _direction->__str__() + "\t" + _material->__str__();
+        return _material->__str__() + "\t0\t" + _coordinates->__str__() + "\t" + _direction->__str__();
     };
     std::string __repr__() const {
         return std::format(
@@ -307,10 +326,12 @@ inline void pyBindTypes(py::module_ &module) {
 
     py::class_<Material, std::shared_ptr<Material>>(types_module, "Material") BIND_STR_REPR(Material)
         .def(
-            py::init<regnum, double, double, std::shared_ptr<Anisotropy>>(),
+            py::init<regnum, double, double, double, double, std::shared_ptr<Anisotropy>>(),
             py::arg("material_number"),
             py::arg("exchange_constant_J"),
             py::arg("atomic_magnetic_saturation_magnetization"),
+            py::arg("gyromagnetic_ratio") = constants::FREE_SPIN_GYROMAGNETIC_RATIO,
+            py::arg("damping_constant") = 0.1,
             py::arg("anisotropy").none(true) = pybind11::none()
         )
         .def("get_number", &Material::getNumber)

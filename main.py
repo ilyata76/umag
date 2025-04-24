@@ -5,6 +5,7 @@ from enum import Enum
 from spindynapy.core.geometries.cartesian import Geometry  # type: ignore
 from spindynapy.core.simulation.cartesian import Simulation  # type: ignore
 from spindynapy.core.solvers.cartesian import LLGSolver  # type: ignore
+from spindynapy.core.solvers import SolverStrategy
 from spindynapy.core.registries import MaterialRegistry  # type: ignore
 from spindynapy.core.interactions.cartesian import (  # type: ignore
     InteractionRegistry,
@@ -15,97 +16,114 @@ from spindynapy.core.interactions.cartesian import (  # type: ignore
 )
 from spindynapy.core.types import Material, UniaxialAnisotropy  # type: ignore
 
-linear_chain = np.array(
-    [
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
-        [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
-        [2.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
-        [3.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
-        [4.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
-        [5.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1],
-        # [[i, 0.0, 0.0, 1.0, 0.0, 0.0, 1] for i in range(5, 1000)],
-    ]
-)
-
-print("O!")
-
+# Константы
 nm = 1e-9
-cubic_lattice = np.array(
-    [
-        [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1],
-        [0.0, 0.0, 1.0 * nm, 1.0, 1.0, 1.0, 1],
-        [0.0, 1.0 * nm, 0.0, 1.0, 1.0, 1.0, 1],
-        [0.0, 1.0 * nm, 1.0 * nm, 1.0, 1.0, 1.0, 1],
-        [1.0 * nm, 0.0, 0.0, 1.0, 1.0, 1.0, 1],
-        [1.0 * nm, 0.0, 1.0 * nm, 1.0, 1.0, 1.0, 1],
-        [1.0 * nm, 1.0 * nm, 0.0, 1.0, 1.0, 1.0, 1],
-        [1.0 * nm, 1.0 * nm, 1.0 * nm, 1.0, 1.0, 1.0, 1],
-    ]
-)
-
-pair = np.array([
-    [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
-    [3.5 * nm, 0.0, 0.0, 1.0, 0.0, 0.0, 1],
-])
+lattice_constant = 0.2507 * nm  # Размер ячейки (2.507 Å)
 
 
 class MaterialEnum(Enum):
     COBALT = 1
 
 
-class InteractionEnum(Enum):
-    EXCHANGE = 0
-    EXTERNAL = 1
-    ANISOTROPY = 2
-    DEMAGNETIZATION = 3
-
-
 co_mat = Material(
-    MaterialEnum.COBALT.value,  # должен соответствовать с ID из MaterialRegistry!
-    6.064e-21,
-    1.72,
-    anisotropy=UniaxialAnisotropy(np.array([1, 0, 0]), 1e-24),
+    material_number=MaterialEnum.COBALT.value,
+    exchange_constant_J=6.064e-21,  # Дж
+    atomic_magnetic_saturation_magnetization=1.72,  # в му_B
+    damping_constant=0.5,
+    anisotropy=UniaxialAnisotropy(np.array([1.0, 0.0, 0.0]), 6.69e-24),  # Дж
 )
 
-exchange_interaction = ExchangeInteraction(cutoff_radius=5)
-external_interaction = ExternalInteraction(100, 100, 100)
-anisotropy_interaction = AnisotropyInteraction()
-demagnetization_interaction = DemagnetizationInteraction(cutoff_radius=5, strategy="cutoff")
-
 material_registry = MaterialRegistry({MaterialEnum.COBALT.value: co_mat})
-llg_solver = LLGSolver()
+
+
+# Создание геометрии (2D кубическая решетка 80 нм × 80 нм)
+nx = int(2 * nm / lattice_constant)  # ~319 узлов
+ny = int(2 * nm / lattice_constant)  # ~319 узлов
+total_nodes = nx * ny  # ~101,761 узлов
+
+# Генерация координат и случайных направлений спинов
+coords = np.zeros((total_nodes, 7))  # [x, y, z, sx, sy, sz, material]
+idx = 0
+for i in range(nx):
+    for j in range(ny):
+        coords[idx, 0] = i * lattice_constant  # x
+        coords[idx, 1] = j * lattice_constant  # y
+        coords[idx, 2] = 0.0  # z (однослойная пластина)
+        # Случайное направление спина
+        theta = np.random.uniform(0, np.pi)
+        phi = np.random.uniform(0, 2 * np.pi)
+        coords[idx, 3] = np.sin(theta) * np.cos(phi)  # sx
+        coords[idx, 4] = np.sin(theta) * np.sin(phi)  # sy
+        coords[idx, 5] = np.cos(theta)  # sz
+        coords[idx, 6] = MaterialEnum.COBALT.value  # material ID
+        idx += 1
+
+geometry = Geometry(coords, material_registry)
+
+
+class InteractionEnum(Enum):
+    EXCHANGE = 0
+    DEMAGNETIZATION = 1
+    ANISOTROPY = 2
+    EXTERNAL = 3
+
+
+exchange_interaction = ExchangeInteraction(cutoff_radius=0.5014 * nm)  # 2 шага решетки
+demagnetization_interaction = DemagnetizationInteraction(cutoff_radius=5 * nm, strategy="cutoff")
+anisotropy_interaction = AnisotropyInteraction()
+external_interaction = ExternalInteraction(1000.0, 0.0, 0.0)
+
 interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: exchange_interaction,
-        InteractionEnum.EXTERNAL.value: external_interaction,
-        InteractionEnum.ANISOTROPY.value: anisotropy_interaction,
         InteractionEnum.DEMAGNETIZATION.value: demagnetization_interaction,
+        InteractionEnum.ANISOTROPY.value: anisotropy_interaction,
+        # InteractionEnum.EXTERNAL.value: external_interaction,
     }
 )
-geometry = Geometry(cubic_lattice, material_registry)
+llg_solver = LLGSolver(strategy=SolverStrategy.EULER)
+dt = 1e-15
 
-simulation = Simulation(geometry, llg_solver, material_registry, interaction_registry)
+simulation = Simulation(geometry, llg_solver, material_registry, interaction_registry, dt, use_openmp=True)
 
-old = time.time()
-simulation.simulate_one_step()
 
-print(time.time() - old)
-old = time.time()
-simulation.simulate_one_step()
+def main():
+    try:
+        # Запуск симуляции
+        start_time = time.time()
+        for i in range(100):
+            simulation.simulate_one_step((i + 1) % 50 == 0)
+            # elem = simulation.get_steps()[-1]
+            # if i % 200 == 0:
+            #     with open(f"./temp/sconfiguration-{i:08d}.vvis", mode="w") as file:
+            #         file.writelines(elem.vvisString())
+        # simulation.simulate_many_steps(100000, save_every_step=1000)  # 10 пс, снимки каждые 0.1 пс
+        print(f"Simulation time: {time.time() - start_time:.2f} seconds")
+    finally:
+        for index, elem in enumerate(simulation.get_steps()):
+            with open(f"./temp/sconfiguration-{index:08d}.vvis", mode="w") as file:
+                file.writelines(elem.vvisString())
+            # with open(f"./temp/SHOT-{index}", mode="w") as file:
+            #     file.writelines(elem.as_string(True)) 
 
-print(time.time() - old)
-old = time.time()
-simulation.simulate_one_step()
+# import signal, sys, os
 
-print(time.time() - old)
-old = time.time()
-simulation.simulate_many_steps(1000)
 
-print(time.time() - old)
+# def signal_handler(sig, frame):
+#     """Обработчик сигналов SIGINT и SIGTSTP."""
+#     signal_name = "SIGTSTP" if sig == signal.SIGTSTP else "SIGINT"
+#     print(f"\nCaught {signal_name}, saving simulation steps...", file=sys.stderr)
+#     if sig == signal.SIGTSTP:
+#         # Возвращаем стандартный обработчик SIGTSTP для приостановки процесса
+#         signal.signal(signal.SIGTSTP, signal.SIG_DFL)
+#         os.kill(os.getpid(), signal.SIGTSTP)
+#     else:
+#         sys.exit(1)
 
-print(simulation.get_steps()[-1].as_string(True))
+# # Установка обработчиков сигналов
+# signal.signal(signal.SIGINT, signal_handler)   # Для Ctrl+C
+# signal.signal(signal.SIGTSTP, signal_handler)  # Для Ctrl+Z
 
-# with open("./a.txt", mode="w") as file:
-#     file.write()
 
-# print(simulation.get_steps()[2].total_fields)
+if __name__ == "__main__":
+    main()

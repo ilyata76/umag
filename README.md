@@ -12,3 +12,7 @@
 make build-all  # build library & configure poetry venv
 make run  # run sample
 ```
+
+OPENMP SIMPLE PARALLELING
+
+simulate_many_steps releases GIL when simulate_one NOT
