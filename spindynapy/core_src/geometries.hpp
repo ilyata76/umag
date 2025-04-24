@@ -98,6 +98,10 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     virtual std::unique_ptr<IGeometry<CoordSystem>> clone() const {
         throw std::logic_error("Method clone Not implemented");
     };
+    
+    virtual Eigen::MatrixXd asNumpy() const {
+        throw std::logic_error("Method asNumPY Not implemented");
+    }
 };
 
 namespace cartesian {
@@ -195,6 +199,20 @@ class Geometry : public AbstractGeometry {
         }
         return std::make_unique<Geometry>(cloned_moments);
     }
+
+    virtual Eigen::MatrixXd asNumpy() const override {
+        Eigen::MatrixXd numpy_matrix(_moments.size(), 7);
+        for (size_t i = 0; i < _moments.size(); ++i) {
+            numpy_matrix(i, 0) = _moments[i]->getCoordinates().asVector().x();
+            numpy_matrix(i, 1) = _moments[i]->getCoordinates().asVector().y();
+            numpy_matrix(i, 2) = _moments[i]->getCoordinates().asVector().z();
+            numpy_matrix(i, 3) = _moments[i]->getDirection().asVector().x();
+            numpy_matrix(i, 4) = _moments[i]->getDirection().asVector().y();
+            numpy_matrix(i, 5) = _moments[i]->getDirection().asVector().z();
+            numpy_matrix(i, 6) = _moments[i]->getMaterial().getNumber();
+        }
+        return numpy_matrix;
+    };
 };
 
 }; // namespace cartesian
@@ -225,6 +243,7 @@ inline void pyBindGeometries(py::module_ &module) {
         .def("__str__", &AbstractGeometry::__str__)
         .def("__len__", &AbstractGeometry::size)
         .def("get_neighbors", &AbstractGeometry::getNeighbors, py::arg("index"), py::arg("cutoff_radius"))
+        .def("as_numpy", &AbstractGeometry::asNumpy)
         .def(
             "__getitem__", &AbstractGeometry::operator[], py::arg("index"), py::return_value_policy::reference
         )

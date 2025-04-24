@@ -218,11 +218,11 @@ class DemagnetizationInteraction : public AbstractInteraction {
                 constants::BOHR_MAGNETON;
             auto distance_norm = distance_vector.norm();
 
-            demagnetization_field -=
+            demagnetization_field +=
                 neighbor_atomistic_moment *
-                (neighbor_moment.getDirection().asVector() / pow(distance_norm, 3) -
-                 (3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /
-                     pow(distance_norm, 5));
+                ((3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /
+                     pow(distance_norm, 5)
+                    - neighbor_moment.getDirection().asVector() / pow(distance_norm, 3));
         }
         demagnetization_field =
             (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
