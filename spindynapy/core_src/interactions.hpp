@@ -44,6 +44,7 @@ template <CoordSystemConcept CoordSystem> class IInteraction {
     };
 
     virtual std::string __str__() const { return nullptr; };
+
     virtual std::string __repr__() const { return nullptr; };
 };
 
@@ -89,7 +90,8 @@ class ExchangeInteraction : public AbstractInteraction {
         for (size_t neighbor_index : neighbor_indices) {
             exchange_field += (geometry[neighbor_index].getMaterial() == current_material
                                    ? GENERALIZED_PREFIX
-                                   : GENERALIZED_PREFIX /* тут можно будет интерфейс использовать */) *
+                                   : GENERALIZED_PREFIX /* тут можно будет интерфейс использовать */
+                              ) *
                               geometry[neighbor_index].getDirection().asVector();
         }
         return exchange_field;
@@ -180,10 +182,40 @@ class DemagnetizationInteraction : public AbstractInteraction {
     std::string _strategy;
     double _cutoff_radius;
 
+    EffectiveField calculate(
+        Moment& current_moment,
+        Material& current_material,
+        MomentsContainer<NamespaceCoordSystem> calculation_moments
+    ) const {
+        EffectiveField demagnetization_field = EffectiveField::Zero();
+
+        auto atomic_magnetic_moments_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+
+        for (auto moment : calculation_moments) {
+            auto distance_vector =
+                current_moment.getCoordinates().asVector() - moment->getCoordinates().asVector();
+            auto neighbor_atomistic_moment =
+                moment->getMaterial().atomic_magnetic_saturation_magnetization *
+                constants::BOHR_MAGNETON;
+            auto distance_norm = distance_vector.norm();
+
+            demagnetization_field +=
+                neighbor_atomistic_moment *
+                ((3 * moment->getDirection().asVector().dot(distance_vector) * distance_vector) /
+                     pow(distance_norm, 5) -
+                 moment->getDirection().asVector() / pow(distance_norm, 3));
+        }
+        demagnetization_field =
+            (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
+
+        return demagnetization_field;
+    }
+
   public:
     DemagnetizationInteraction(double cutoff_radius, std::string strategy = "cutoff")
         : _cutoff_radius(cutoff_radius), _strategy(strategy) {
-        if (strategy != "cutoff") {
+        if (strategy != "cutoff" && strategy != "macrocells") {
             throw std::invalid_argument("Invalid strategy string");
         }
     };
@@ -191,44 +223,64 @@ class DemagnetizationInteraction : public AbstractInteraction {
     virtual void prepareData(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) override {
-        // if cutoff
-        // обновить кэш по соседям
-        geometry.getNeighbors(moment_index, this->_cutoff_radius);
+        if (this->_strategy == "cutoff") {
+            geometry.getNeighbors(moment_index, this->_cutoff_radius);
+        } else if (this->_strategy == "macrocells") {
+            geometry.createMacrocellsIfNotCreated(false);
+        }
     }
 
     virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
     ) const override {
-        // if cutoff
-        EffectiveField demagnetization_field = EffectiveField::Zero();
         auto &current_moment = geometry[moment_index];
         auto &current_material = current_moment.getMaterial();
-        auto neighbor_indices = geometry.getNeighbors(moment_index, _cutoff_radius);
-        // auto neighbor_moments = geometry.getFromIndexes(neighbor_indices)
 
-        auto atomic_magnetic_moments_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-
-        for (size_t neighbor_index : neighbor_indices) {
-            auto &neighbor_moment = geometry[neighbor_index];
-            auto distance_vector =
-                current_moment.getCoordinates().asVector() - neighbor_moment.getCoordinates().asVector();
-            auto neighbor_atomistic_moment =
-                neighbor_moment.getMaterial().atomic_magnetic_saturation_magnetization *
-                constants::BOHR_MAGNETON;
-            auto distance_norm = distance_vector.norm();
-
-            demagnetization_field +=
-                neighbor_atomistic_moment *
-                ((3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /
-                     pow(distance_norm, 5)
-                    - neighbor_moment.getDirection().asVector() / pow(distance_norm, 3));
+        if (this->_strategy == "cutoff") {
+            auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
+            auto calculation_moments = geometry.getFromIndexes(neighbor_indices);
+            return this->calculate(current_moment, current_material, calculation_moments);
+        } else if (this->_strategy == "macrocells") {
+            auto calculation_moments = geometry.getMomentsFromMacrocells();
+            return this->calculate(current_moment, current_material, calculation_moments);
         }
-        demagnetization_field =
-            (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
-
-        return demagnetization_field;
+        // Если не удалось найти подходящую стратегию
+        throw std::invalid_argument("Invalid strategy string");
     }
+
+    // virtual EffectiveField calculateFieldContribution(
+    //     size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
+    // ) const override {
+    //     // if cutoff
+    //     EffectiveField demagnetization_field = EffectiveField::Zero();
+    //     auto &current_moment = geometry[moment_index];
+    //     auto &current_material = current_moment.getMaterial();
+    //     auto neighbor_indices = geometry.getNeighbors(moment_index, _cutoff_radius);
+    //     // auto neighbor_moments = geometry.getFromIndexes(neighbor_indices)
+
+    //     auto atomic_magnetic_moments_norm =
+    //         current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+
+    //     for (size_t neighbor_index : neighbor_indices) {
+    //         auto &neighbor_moment = geometry[neighbor_index];
+    //         auto distance_vector =
+    //             current_moment.getCoordinates().asVector() - neighbor_moment.getCoordinates().asVector();
+    //         auto neighbor_atomistic_moment =
+    //             neighbor_moment.getMaterial().atomic_magnetic_saturation_magnetization *
+    //             constants::BOHR_MAGNETON;
+    //         auto distance_norm = distance_vector.norm();
+
+    //         demagnetization_field +=
+    //             neighbor_atomistic_moment *
+    //             ((3 * neighbor_moment.getDirection().asVector().dot(distance_vector) * distance_vector) /
+    //                  pow(distance_norm, 5) -
+    //              neighbor_moment.getDirection().asVector() / pow(distance_norm, 3));
+    //     }
+    //     demagnetization_field =
+    //         (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
+
+    //     return demagnetization_field;
+    // }
 };
 
 using InteractionRegistry = InteractionRegistry<NamespaceCoordSystem>;

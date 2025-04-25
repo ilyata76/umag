@@ -224,15 +224,26 @@ class Moment {
         this->_direction->setDirection(new_direction_vector);
     }
 
+    void setCoordinates(Eigen::Vector3d new_coordinates_vector) {
+        this->_coordinates->setCoordinates(new_coordinates_vector);
+    }
+
+    void setMaterial(std::shared_ptr<Material> new_material) { this->_material = new_material; }
+
     /**
      * Получить расположение момента
      */
     Coordinates &getCoordinates() { return *_coordinates; };
 
     /**
-     * Получить ссылку на метериал
+     * Получить ссылку на материал
      */
     Material &getMaterial() { return *_material; };
+
+    /**
+     * Получить ссылку на материал
+     */
+    std::shared_ptr<Material> &getMaterialSharedPtr() { return this->_material; };
 
     std::shared_ptr<Moment> clone() const {
         return std::make_shared<Moment>(*_coordinates, *_direction, _material);

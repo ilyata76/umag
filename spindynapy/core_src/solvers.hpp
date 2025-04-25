@@ -27,10 +27,7 @@ namespace py = pybind11;
 
 namespace spindynapy {
 
-enum class SolverStrategy {
-    EULER = 0,
-    HEUN = 1
-};
+enum class SolverStrategy { EULER = 0, HEUN = 1 };
 
 /**
  * Базовый интерфейс решателя-интегратора
@@ -57,8 +54,9 @@ class LLGSolver : public AbstractSolver {
   protected:
     SolverStrategy _strategy;
 
-    Eigen::Vector3d
-    calculateLLGMomentChange(Material &material, Eigen::Vector3d moment_vector, Eigen::Vector3d effective_field) {
+    Eigen::Vector3d calculateLLGMomentChange(
+        Material &material, Eigen::Vector3d moment_vector, Eigen::Vector3d effective_field
+    ) {
         auto prefix_term = material.gyromagnetic_ratio / (1.0 + pow(material.damping_constant, 2));
 
         Eigen::Vector3d moment_change =

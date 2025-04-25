@@ -1,71 +1,120 @@
 import numpy as np
 import time
+import os
 from enum import Enum
 
+from spindynapy.core import constants  # type: ignore
 from spindynapy.core.geometries.cartesian import Geometry  # type: ignore
 from spindynapy.core.simulation.cartesian import Simulation  # type: ignore
-from spindynapy.core.solvers.cartesian import LLGSolver  # type: ignore
-from spindynapy.core.solvers import SolverStrategy
+from spindynapy.core.solvers.cartesian import AbstractSolver, LLGSolver  # type: ignore
+from spindynapy.core.solvers import SolverStrategy  # type: ignore
 from spindynapy.core.registries import MaterialRegistry  # type: ignore
-from spindynapy.core.interactions.cartesian import (  # type: ignore
+from spindynapy.core.interactions.cartesian import (  # type: ignore # noqa
     InteractionRegistry,
     ExchangeInteraction,
-    ExternalInteraction,
+    ExternalInteraction,  # noqa
     AnisotropyInteraction,
-    DemagnetizationInteraction
+    DemagnetizationInteraction,
 )
 from spindynapy.core.types import Material, UniaxialAnisotropy  # type: ignore
 
-# Константы
-nm = 1e-9
-lattice_constant = 0.2507 * nm  # Размер ячейки (2.507 Å)
+
+class Unit:
+    """TODO"""
+
+    def __init__(self, factor):
+        self.factor = factor
+
+    def __call__(self, value):
+        return value * self.factor
+
+
+nano = Unit(1e-9)
+pico = Unit(1e-12)
+femto = Unit(1e-15)
 
 
 class MaterialEnum(Enum):
     COBALT = 1
 
 
-co_mat = Material(
-    material_number=MaterialEnum.COBALT.value,
-    exchange_constant_J=6.064e-21,  # Дж
-    atomic_magnetic_saturation_magnetization=1.72,  # в му_B
-    damping_constant=0.5,
-    anisotropy=UniaxialAnisotropy(np.array([1.0, 0.0, 0.0]), 6.69e-24),  # Дж
-)
-
-material_registry = MaterialRegistry({MaterialEnum.COBALT.value: co_mat})
-
-nx = int(10 * nm / lattice_constant)
-ny = int(10 * nm / lattice_constant)
-total_nodes = nx * ny
-
-try:
-    coords = np.load("coords.npy")
-except Exception:
-    coords = None
-
-if coords is None or not coords.any():
-    # Генерация координат и случайных направлений спинов
-    coords = np.zeros((total_nodes, 7))  # [x, y, z, sx, sy, sz, material]
-    idx = 0
-    for i in range(nx):
-        for j in range(ny):
-            coords[idx, 0] = i * lattice_constant  # x
-            coords[idx, 1] = j * lattice_constant  # y
-            coords[idx, 2] = 0.0  # z (однослойная пластина)
-            # Случайное направление спина
-            theta = np.random.uniform(0, np.pi)
-            phi = np.random.uniform(0, 2 * np.pi)
-            coords[idx, 3] = np.sin(theta) * np.cos(phi)  # sx
-            coords[idx, 4] = np.sin(theta) * np.sin(phi)  # sy
-            coords[idx, 5] = np.cos(theta)  # sz
-            coords[idx, 6] = MaterialEnum.COBALT.value  # material ID
-            idx += 1
-
-np.save("coords.npy", coords)
+mat_lib: dict[str, Material] = {
+    "Co": Material(
+        material_number=MaterialEnum.COBALT.value,
+        exchange_constant_J=6.064e-21,  # Дж
+        atomic_magnetic_saturation_magnetization=1.72,  # в му_B
+        damping_constant=0.5,
+        gyromagnetic_ratio=constants.FREE_SPIN_GYROMAGNETIC_RATIO,
+        anisotropy=UniaxialAnisotropy(np.array([1.0, 0.0, 0.0]), 6.69e-24),  # Дж
+    )
+}
 
 
-geometry = Geometry(coords, material_registry)
+class XYZ:
+    """TODO"""
+
+    def __init__(self, x: float, y: float, z: float) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+
+
+class ThetaPhi:
+    """TODO"""
+
+    def __init__(self, theta: float, phi: float) -> None:
+        self.theta = theta
+        self.phi = phi
+
+
+class NumpyGeometryManager:
+    """TODO"""
+
+    @staticmethod
+    def save_geometry(name: str, geometry: np.typing.ArrayLike) -> None:
+        """TODO"""
+        np.save(f"{name}.npy", geometry)
+
+    @staticmethod
+    def load_geometry(name: str) -> np.typing.ArrayLike | None:
+        """TODO"""
+        try:
+            loaded_numpy = np.load(f"{name}.npy")
+        except Exception:
+            loaded_numpy = None
+        return loaded_numpy
+
+    @staticmethod
+    def generate_parallelepiped_monomaterial_geometry(
+        lattice_constant: XYZ,
+        size: XYZ,
+        material: Material,
+        initial_direction: ThetaPhi | None = None,
+    ) -> np.typing.ArrayLike:
+        """TODO"""
+        nx, ny, nz = (
+            int(size.x / lattice_constant.x) or 1,
+            int(size.y / lattice_constant.y) or 1,
+            int(size.z / lattice_constant.z) or 1,
+        )
+        total_nodes = nx * ny * nz
+        coords, idx = np.zeros((total_nodes, 7)), 0  # [x, y, z, sx, sy, sz, material]
+        matnumber = material.get_number()
+        for k in range(nz):
+            for i in range(nx):
+                for j in range(ny):
+                    coords[idx, 0] = i * lattice_constant.x
+                    coords[idx, 1] = j * lattice_constant.y
+                    coords[idx, 2] = k * lattice_constant.z  # todo HCP, cubic etc.. сложнее
+                    if not initial_direction:
+                        theta = np.random.uniform(0, np.pi)
+                        phi = np.random.uniform(0, 2 * np.pi)
+                        coords[idx, 3] = np.sin(theta) * np.cos(phi)
+                        coords[idx, 4] = np.sin(theta) * np.sin(phi)
+                        coords[idx, 5] = np.cos(theta)
+                    coords[idx, 6] = matnumber
+                    idx += 1
+        return coords
 
 
 class InteractionEnum(Enum):
@@ -75,63 +124,142 @@ class InteractionEnum(Enum):
     EXTERNAL = 3
 
 
-exchange_interaction = ExchangeInteraction(cutoff_radius=0.51 * nm)  # 2 шага решетки
-demagnetization_interaction = DemagnetizationInteraction(cutoff_radius=0.51 * nm, strategy="cutoff")
-anisotropy_interaction = AnisotropyInteraction()
-external_interaction = ExternalInteraction(1000.0, 0.0, 0.0)
-
-interaction_registry = InteractionRegistry(
-    {
-        InteractionEnum.EXCHANGE.value: exchange_interaction,
-        InteractionEnum.DEMAGNETIZATION.value: demagnetization_interaction,
-        InteractionEnum.ANISOTROPY.value: anisotropy_interaction,
-        # InteractionEnum.EXTERNAL.value: external_interaction,
-    }
-)
-llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
-dt = 1e-16
-
-simulation = Simulation(geometry, llg_solver, material_registry, interaction_registry, dt, use_openmp=True)
-
-
-def main():
+def simulate(simulation: Simulation, steps: int = 100, save_every_step: int = 2) -> None:
+    print("[PYTHON] Simulation started at", time.strftime("%H:%M:%S"))
     try:
-        # Запуск симуляции
         start_time = time.time()
-        for i in range(50000):
-            simulation.simulate_one_step(i % 1000 == 0)
-            # elem = simulation.get_steps()[-1]
-            # if i % 200 == 0:
-            #     with open(f"./temp/sconfiguration-{i:08d}.vvis", mode="w") as file:
-            #         file.writelines(elem.vvisString())
-        # simulation.simulate_many_steps(100000, save_every_step=1000)  # 10 пс, снимки каждые 0.1 пс
-        print(f"Simulation time: {time.time() - start_time:.2f} seconds")
-        np.save("coords.npy", simulation.get_steps()[-1].geometry.as_numpy())
+        # шаги симуляции
+        for i in range(steps):
+            simulation.simulate_one_step(i % save_every_step == 0)
     finally:
+        print(f"[PYTHON] Simulation time: {time.time() - start_time:.2f} seconds")
+
+
+def process(
+    material_registry: MaterialRegistry,
+    interaction_registry: InteractionRegistry,
+    codename: str,
+    solver: AbstractSolver,
+    time_step: float,
+    generate_geometry_args: dict | None = None,
+    macrocell_size: float = nano(1),
+    steps: int = 1000,
+    save_every_step: int = 100,
+    load_geometry_path: str | None = None,  # можно загрузить геометрию после другой симуляции
+    save_geometry_path: str | None = None   # сохранить геометрию в файл
+) -> None:
+    """TODO это - фасадная функция так сказать"""
+
+    # --- В КАКУЮ ПАПКУ ПИСАТЬ ---
+
+    output_dir = f"./temp/{codename}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- ГЕОМЕТРИЯ ---
+
+    print(f"[PYTHON] Reading geometry from {load_geometry_path or output_dir}/INITIAL")
+    numpy_geometry = NumpyGeometryManager.load_geometry(f"{load_geometry_path or output_dir}/INITIAL")
+    if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
+        print("[PYTHON] Geometry not found, generating new one")
+        if not generate_geometry_args:
+            raise ValueError("[PYTHON] No geometry to load and no geometry generation parameters provided.")
+        numpy_geometry = NumpyGeometryManager.generate_parallelepiped_monomaterial_geometry(
+            **generate_geometry_args
+        )
+        NumpyGeometryManager.save_geometry(f"{save_geometry_path or output_dir}/INITIAL", numpy_geometry)
+
+    geometry = Geometry(numpy_geometry, material_registry, macrocell_size=macrocell_size)  # type: ignore
+
+    # --- СИМУЛЯЦИЯ ---
+
+    simulation = Simulation(
+        geometry=geometry,
+        solver=solver,
+        material_registry=material_registry,
+        interaction_registry=interaction_registry,
+        dt=time_step,
+        use_openmp=True,
+    )
+
+    try:
+        simulate(simulation, steps=steps, save_every_step=save_every_step)
+    finally:
+        # --- СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
+        print(f"[PYTHON] Saving results for {simulation.get_steps().__len__()} steps")
         for index, elem in enumerate(simulation.get_steps()):
-            with open(f"./temp/sconfiguration-{index:08d}.vvis", mode="w") as file:
+            with open(f"{output_dir}/sconfiguration-{index:08d}.vvis", mode="w") as file:
                 file.writelines(elem.vvisString())
-            # with open(f"./temp/SHOT-{index}", mode="w") as file:
-            #     file.writelines(elem.as_string(True)) 
 
-# import signal, sys, os
+        print(f"[PYTHON] Saving geometry in {output_dir}/RESULT as numpy array")
+        NumpyGeometryManager.save_geometry(
+            f"{output_dir}/RESULT",
+            simulation.get_steps()[-1].geometry.as_numpy(),
+        )
 
-
-# def signal_handler(sig, frame):
-#     """Обработчик сигналов SIGINT и SIGTSTP."""
-#     signal_name = "SIGTSTP" if sig == signal.SIGTSTP else "SIGINT"
-#     print(f"\nCaught {signal_name}, saving simulation steps...", file=sys.stderr)
-#     if sig == signal.SIGTSTP:
-#         # Возвращаем стандартный обработчик SIGTSTP для приостановки процесса
-#         signal.signal(signal.SIGTSTP, signal.SIG_DFL)
-#         os.kill(os.getpid(), signal.SIGTSTP)
-#     else:
-#         sys.exit(1)
-
-# # Установка обработчиков сигналов
-# signal.signal(signal.SIGINT, signal_handler)   # Для Ctrl+C
-# signal.signal(signal.SIGTSTP, signal_handler)  # Для Ctrl+Z
+    # --- КОНЕЦ ---
 
 
 if __name__ == "__main__":
-    main()
+
+    # --- ВЗАИМОДЕЙСТВИЯ ---
+
+    interactions = {
+        InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.51)),
+        InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
+            cutoff_radius=nano(2), strategy="macrocells"
+        ),
+        InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
+        # InteractionEnum.EXTERNAL.value: ExternalInteraction(50, 0.05, 0.0),
+    }
+
+    # --- МАТЕРИАЛЫ ---
+
+    material_registry = MaterialRegistry({MaterialEnum.COBALT.value: mat_lib["Co"]})
+
+    # --- РЕШАТЕЛЬ ---
+
+    llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
+    dt = femto(0.1)
+
+    # --- ЗАПУСК ---
+
+    print("[PYTHON] Starting simulation with MACROCELLS demag")
+    process(
+        material_registry=material_registry,
+        interaction_registry=InteractionRegistry(interactions),
+        codename="80x80x0_Co_Relaxation_mactocells_all",
+        solver=llg_solver,
+        time_step=dt,
+        steps=200_000,
+        save_every_step=1_000,
+        macrocell_size=nano(1),
+        generate_geometry_args={
+            "lattice_constant": XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
+            "size": XYZ(nano(80), nano(80), 0),
+            "material": mat_lib["Co"],
+            "initial_direction": None,  # random
+        },
+        load_geometry_path="./temp/"  # общий
+    )
+
+    # --- ПЕРЕОПРЕДЕЛЕНИЕ ПАРАМЕТРОВ ДЛЯ ДРУГОЙ СИМУЛЯЦИИ ---
+
+    llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
+    interactions[InteractionEnum.DEMAGNETIZATION.value] = DemagnetizationInteraction(
+        cutoff_radius=nano(2), strategy="cutoff"
+    )
+
+    # --- ЗАПУСК ---
+
+    print("[PYTHON] Starting simulation with CUTOFF demag")
+    process(
+        material_registry=material_registry,
+        interaction_registry=InteractionRegistry(interactions),
+        codename="80x80x0_Co_Relaxation_cutoff_2",
+        solver=llg_solver,
+        time_step=dt,
+        steps=200_000,
+        save_every_step=1_000,
+        macrocell_size=nano(1),
+        load_geometry_path="./temp/"  # общий
+    )

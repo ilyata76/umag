@@ -73,7 +73,8 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
             result +=
                 use_descriptions
                     ? std::format(
-                          "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: {:.5e} x: "
+                          "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: "
+                          "{:.5e} x: "
                           "{:.5e} y: {:.5e} z: {:.5e}",
                           i,
                           (*geometry)[i].__str__(),
@@ -130,7 +131,8 @@ template <CoordSystemConcept CoordSystem> class Simulation {
   protected:
     // спиновое состояние (изменяемое, подменяемое извне) в разных системах координат
     std::shared_ptr<IGeometry<CoordSystem>> _geometry;
-    // полиморфный решатель в разных системах координат И с разными методами решения (стратегия расчётов)
+    // полиморфный решатель в разных системах координат И с разными методами решения (стратегия
+    // расчётов)
     std::shared_ptr<ISolver<CoordSystem>> _solver;
 
     // регистр, который хранит мета-информацию о материалах, на которые ссылаются классы моментов
@@ -165,7 +167,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     bool _use_openmp = false;
 
     // была ли предпоготовка для обсчёта вкладов взаимодействий
-    bool interactions_prepared = false;
+    bool _system_prepared = false;
 
     void correctBuffers(size_t moments_size) {
         // корректировка размера буфера (если изменилась геометрия!)
@@ -190,15 +192,30 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         auto local_time = std::chrono::current_zone()->to_local(now);
     };
 
-    void prepareFiledContribution() {
+    void prepareInteractions() {
         size_t moments_size = this->_geometry->size();
         for (auto &[_, interaction] : *_interaction_registry) {
             for (size_t i = 0; i < moments_size; ++i) {
                 interaction->prepareData(i, *this->_geometry, *this->_material_registry);
             }
         }
-        this->interactions_prepared = true;
-        if (this->outstream) *this->outstream << "Interactions has been prepared" << std::endl;
+    }
+
+    void prepareGeometry() { this->_geometry->prepareData(); }
+
+    void prepareSystem() {
+        if (this->outstream) {
+            *this->outstream << "Preparing geometry ..." << std::endl;
+        }
+        this->prepareGeometry();
+        if (this->outstream) {
+            *this->outstream << "preparing interactions ..." << std::endl;
+        }
+        this->prepareInteractions();
+        this->_system_prepared = true;
+        if (this->outstream) {
+            *this->outstream << "!!! System has been prepared" << std::endl;
+        }
     }
 
     void calculateFieldContributionWithOpenMP(
@@ -297,13 +314,16 @@ template <CoordSystemConcept CoordSystem> class Simulation {
           _use_openmp(use_openmp),
           outstream(out_stream) {
         // проверки
-        if (!_geometry) throw std::invalid_argument("Геометрия не может быть None");
-        if (!_solver) throw std::invalid_argument("Решатель не может быть None");
+        if (!_geometry)
+            throw std::invalid_argument("Геометрия не может быть None");
+        if (!_solver)
+            throw std::invalid_argument("Решатель не может быть None");
         if (!_interaction_registry || _material_registry->isEmpty())
             throw std::invalid_argument("Регистр взаимодействий не может быть None");
         if (!_material_registry || _material_registry->isEmpty())
             throw std::invalid_argument("Регистр материалов не может быть None");
-        if (_dt <= 0) throw std::invalid_argument("Time step dt must be positive.");
+        if (_dt <= 0)
+            throw std::invalid_argument("Time step dt must be positive.");
 
         // Инициализируем буфер эффективных полей нужного размера
         this->_effective_fields.resize(geometry->size(), EffectiveField::Zero());
@@ -317,14 +337,22 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     std::string __str__() const { return _geometry->__str__(); };
 
     void simulateOneStep(bool save_step = false) {
-        if (!this->interactions_prepared) this->prepareFiledContribution();
-        this->_current_time += this->_dt;
-        this->calculateEffectiveFields();
-        this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
-        if (save_step) {
-            this->saveStep();
+        try {
+            if (!this->_system_prepared)
+                this->prepareSystem();
+            this->_current_time += this->_dt;
+            this->calculateEffectiveFields();
+            this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
+            if (save_step) {
+                this->saveStep();
+            }
+            this->_step += 1;
+        } catch (const std::exception &e) {
+            if (this->outstream) {
+                *this->outstream << "Error during simulation step: " << e.what() << std::endl;
+            }
+            throw e;
         }
-        this->_step += 1;
     };
 
     void simulateManySteps(uint steps, uint save_every_step = 1) {
