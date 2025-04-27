@@ -14,6 +14,9 @@ build-all:
 build-spindynapy:  # e.g. : make build-spindynapy FLAGS=-v
 	$(PIP) install $(PROJECT_ROOT)/spindynapy $(FLAGS)
 
+build-release:  # Релизная сборка с DEBUG=FALSE
+	DEBUG=0 $(PIP) install $(PROJECT_ROOT)/spindynapy
+
 format:
 	find $(PROJECT_ROOT)/spindynapy/core_src -regex '.*\.\(cpp\|hpp\|cc\|cxx\)' -exec $(CLANG_FORMAT) -style=file -i {} \;
 

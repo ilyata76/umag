@@ -124,13 +124,15 @@ class InteractionEnum(Enum):
     EXTERNAL = 3
 
 
-def simulate(simulation: Simulation, steps: int = 100, save_every_step: int = 2) -> None:
+def simulate(
+    simulation: Simulation, steps: int = 100, save_every_step: int = 2, update_macrocells_every_step: int = 2
+) -> None:
     print("[PYTHON] Simulation started at", time.strftime("%H:%M:%S"))
     try:
         start_time = time.time()
         # шаги симуляции
         for i in range(steps):
-            simulation.simulate_one_step(i % save_every_step == 0)
+            simulation.simulate_one_step(i % save_every_step == 0, i % update_macrocells_every_step == 0)
     finally:
         print(f"[PYTHON] Simulation time: {time.time() - start_time:.2f} seconds")
 
@@ -145,8 +147,9 @@ def process(
     macrocell_size: float = nano(1),
     steps: int = 1000,
     save_every_step: int = 100,
+    update_macrocells_every_step: int = 100,
     load_geometry_path: str | None = None,  # можно загрузить геометрию после другой симуляции
-    save_geometry_path: str | None = None   # сохранить геометрию в файл
+    save_geometry_path: str | None = None,  # сохранить геометрию в файл
 ) -> None:
     """TODO это - фасадная функция так сказать"""
 
@@ -157,8 +160,8 @@ def process(
 
     # --- ГЕОМЕТРИЯ ---
 
-    print(f"[PYTHON] Reading geometry from {load_geometry_path or output_dir}/INITIAL")
-    numpy_geometry = NumpyGeometryManager.load_geometry(f"{load_geometry_path or output_dir}/INITIAL")
+    print(f"[PYTHON] Reading geometry from {load_geometry_path or f'{output_dir}/INITIAL'}")
+    numpy_geometry = NumpyGeometryManager.load_geometry(load_geometry_path or f"{output_dir}/INITIAL")
     if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
         print("[PYTHON] Geometry not found, generating new one")
         if not generate_geometry_args:
@@ -166,7 +169,7 @@ def process(
         numpy_geometry = NumpyGeometryManager.generate_parallelepiped_monomaterial_geometry(
             **generate_geometry_args
         )
-        NumpyGeometryManager.save_geometry(f"{save_geometry_path or output_dir}/INITIAL", numpy_geometry)
+        NumpyGeometryManager.save_geometry(save_geometry_path or f"{output_dir}/INITIAL", numpy_geometry)
 
     geometry = Geometry(numpy_geometry, material_registry, macrocell_size=macrocell_size)  # type: ignore
 
@@ -182,7 +185,12 @@ def process(
     )
 
     try:
-        simulate(simulation, steps=steps, save_every_step=save_every_step)
+        simulate(
+            simulation,
+            steps=steps,
+            save_every_step=save_every_step,
+            update_macrocells_every_step=update_macrocells_every_step,
+        )
     finally:
         # --- СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
         print(f"[PYTHON] Saving results for {simulation.get_steps().__len__()} steps")
@@ -206,7 +214,7 @@ if __name__ == "__main__":
     interactions = {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.51)),
         InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(2), strategy="macrocells"
+            cutoff_radius=nano(3), strategy="macrocells"
         ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(50, 0.05, 0.0),
@@ -219,7 +227,7 @@ if __name__ == "__main__":
     # --- РЕШАТЕЛЬ ---
 
     llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
-    dt = femto(0.1)
+    dt = femto(1)
 
     # --- ЗАПУСК ---
 
@@ -227,39 +235,17 @@ if __name__ == "__main__":
     process(
         material_registry=material_registry,
         interaction_registry=InteractionRegistry(interactions),
-        codename="80x80x0_Co_Relaxation_mactocells_all",
+        codename="_111_10x10x0_Co_Relaxation_macrocells_aaaaasss2dszsssasdasssssssd6_",
         solver=llg_solver,
         time_step=dt,
-        steps=200_000,
-        save_every_step=1_000,
+        steps=1_000_000,
+        save_every_step=10_000,
+        update_macrocells_every_step=1000,
         macrocell_size=nano(1),
         generate_geometry_args={
             "lattice_constant": XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
-            "size": XYZ(nano(80), nano(80), 0),
+            "size": XYZ(nano(10), nano(10), 0),
             "material": mat_lib["Co"],
             "initial_direction": None,  # random
         },
-        load_geometry_path="./temp/"  # общий
-    )
-
-    # --- ПЕРЕОПРЕДЕЛЕНИЕ ПАРАМЕТРОВ ДЛЯ ДРУГОЙ СИМУЛЯЦИИ ---
-
-    llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
-    interactions[InteractionEnum.DEMAGNETIZATION.value] = DemagnetizationInteraction(
-        cutoff_radius=nano(2), strategy="cutoff"
-    )
-
-    # --- ЗАПУСК ---
-
-    print("[PYTHON] Starting simulation with CUTOFF demag")
-    process(
-        material_registry=material_registry,
-        interaction_registry=InteractionRegistry(interactions),
-        codename="80x80x0_Co_Relaxation_cutoff_2",
-        solver=llg_solver,
-        time_step=dt,
-        steps=200_000,
-        save_every_step=1_000,
-        macrocell_size=nano(1),
-        load_geometry_path="./temp/"  # общий
     )

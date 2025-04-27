@@ -14,6 +14,10 @@ set(CPM_USE_LOCAL_PACKAGES ON CACHE BOOL "Use local packages if available")
 set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/build-deps/" CACHE PATH "Path to CPM source cache")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Оптимизация для Release
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+
 # python3-dev headers (!!!)
 # Явно указываем Python 3.12
 find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development)
@@ -70,6 +74,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module OpenMP::OpenMP_CXX)
 
+set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION True)
+
 # Копирует compile_commands.json в корень проекта после конфигурации
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
@@ -77,3 +83,4 @@ add_custom_command(
         "${CMAKE_BINARY_DIR}/compile_commands.json"
         "${CMAKE_SOURCE_DIR}/compile_commands.json"
 )
+

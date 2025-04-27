@@ -106,9 +106,16 @@ template <CoordSystemConcept CoordSystem> class IGeometry {
     }
     virtual void createMacrocells() { throw std::logic_error("Method createMacrocells Not implemented"); };
     virtual void clearMacrocells() { throw std::logic_error("Method clearMacrocells Not implemented"); };
-    virtual MomentsContainer<CoordSystem> getMomentsFromMacrocells() {
+    virtual MomentsContainer<CoordSystem> getMomentsFromMacrocells(size_t index, double cutoff_radius) {
         throw std::logic_error("Method getMomentsFromMacrocells Not implemented");
     };
+
+    virtual bool hasInNeighborsMacrocellsCache(size_t index, double cutoff_radius) const = 0;
+    virtual std::vector<size_t> getFromNeighborsMacrocellsCache(size_t index, double cutoff_radius) const = 0;
+    virtual void
+    updateNeighborsMacrocellsCache(size_t index, double cutoff_radius, std::vector<size_t> neighbors) = 0;
+    virtual void clearNeighborsMacrocellsCache(size_t index, double cutoff_radius) = 0;
+    virtual void clearAllNeighborsMacrocellsCache() = 0;
 
     virtual CoordSystem::Moment &operator[](size_t index) {
         throw std::logic_error("Operator [index] Not implemented");
@@ -144,6 +151,7 @@ class Geometry : public AbstractGeometry {
   public:
     MomentsContainer<NamespaceCoordSystem> _moments;
     NeighborsContainers _neighbors_cache;
+    NeighborsContainers _neighbors_macrocells_cache;
 
     std::vector<size_t> _spin2cell;              // Карта спин -> ячейка
     std::vector<NamespaceMacroCell> _macrocells; // Макроячейки
@@ -203,8 +211,8 @@ class Geometry : public AbstractGeometry {
             spins_by_cell_indicies[cell_idx].push_back(spin_idx);
         }
 
-        this->_macrocells = {}; // очищаем макроячейки
-        this->_macrocells.reserve(num_cells);   // резервируем место под макроячейки
+        this->_macrocells = {};               // очищаем макроячейки
+        this->_macrocells.reserve(num_cells); // резервируем место под макроячейки
 
         // для каждой макроячейки k
         for (size_t k = 0; k < num_cells; ++k) {
@@ -241,6 +249,25 @@ class Geometry : public AbstractGeometry {
     };
     virtual void clearAllNeighborsCache() override { _neighbors_cache.clear(); };
 
+    //
+
+    virtual bool hasInNeighborsMacrocellsCache(size_t index, double cutoff_radius) const override {
+        return _neighbors_macrocells_cache.contains(std::make_pair(index, cutoff_radius));
+    };
+    virtual std::vector<size_t>
+    getFromNeighborsMacrocellsCache(size_t index, double cutoff_radius) const override {
+        return _neighbors_macrocells_cache.at(std::make_pair(index, cutoff_radius));
+    };
+    virtual void updateNeighborsMacrocellsCache(
+        size_t index, double cutoff_radius, std::vector<size_t> neighbors
+    ) override {
+        _neighbors_macrocells_cache[std::make_pair(index, cutoff_radius)] = neighbors;
+    };
+    virtual void clearNeighborsMacrocellsCache(size_t index, double cutoff_radius) override {
+        _neighbors_macrocells_cache.erase(std::make_pair(index, cutoff_radius));
+    };
+    virtual void clearAllNeighborsMacrocellsCache() override { _neighbors_macrocells_cache.clear(); };
+
   public:
     Geometry(const std::vector<std::shared_ptr<Moment>> &moments, double macrocell_size = 1e-9)
         : _moments(moments), _macrocell_size(macrocell_size) {};
@@ -266,7 +293,7 @@ class Geometry : public AbstractGeometry {
 
     virtual MomentsContainer<NamespaceCoordSystem> getFromIndexes(std::vector<size_t> indexes) override {
         MomentsContainer<NamespaceCoordSystem> result(indexes.size(), nullptr);
-        for (size_t i; i < indexes.size(); ++i) {
+        for (size_t i = 0; i < indexes.size(); ++i) {
             result[i] = this->_moments[indexes[i]];
         }
         return result;
@@ -280,6 +307,7 @@ class Geometry : public AbstractGeometry {
 
     virtual void prepareData() override {
         this->createMacrocells(); // создать макроячейки, поделив спины
+        this->updateMacrocells(); //
     };
 
     virtual const std::vector<NamespaceMacroCell> &getMacrocells() override {
@@ -296,22 +324,44 @@ class Geometry : public AbstractGeometry {
         return this->_spin2cell[spin_index];
     };
 
-    virtual MomentsContainer<CartesianCoordSystem> getMomentsFromMacrocells() override {
-        if (this->_macrocells.empty()) {
-            throw std::runtime_error("Macrocells are not created. Call prepareData() first.");
+    virtual MomentsContainer<CartesianCoordSystem>
+    getMomentsFromMacrocells(size_t index, double cutoff_radius) override {
+        // проверяем кэш
+        if (this->hasInNeighborsMacrocellsCache(index, cutoff_radius)) {
+            auto macro_indexes = this->getFromNeighborsMacrocellsCache(index, cutoff_radius);
+            MomentsContainer<CartesianCoordSystem> moments_from_macrocells(macro_indexes.size(), nullptr);
+            for (size_t macro_index = 0; macro_index < macro_indexes.size(); ++macro_index) {
+                moments_from_macrocells[macro_index] =
+                    this->_macrocells[macro_indexes[macro_index]].avg_moment;
+            }
+
+            return moments_from_macrocells;
         }
-        // MomentsContainer<CartesianCoordSystem> moments_from_macrocells(_macrocells.size(), nullptr);
-        // for (size_t i; i < this->_macrocells.size(); ++i) {
-        //     moments_from_macrocells[i] = this->_macrocells[i].avg_moment;
-        // }
-        return {};
+
+        // иначе считаем
+        std::vector<size_t> neighbors;
+        const auto &target_coords = _moments[index]->getCoordinates();
+
+        for (size_t i = 0; i < _macrocells.size(); ++i) {
+            const double distance =
+                target_coords.getDistanceFrom(_macrocells[i].avg_moment->getCoordinates());
+            if (distance <= cutoff_radius) {
+                neighbors.push_back(i);
+            }
+        }
+
+        // сохраняем в кэш
+        this->updateNeighborsMacrocellsCache(index, cutoff_radius, neighbors);
+
+        MomentsContainer<CartesianCoordSystem> moments_from_macrocells(neighbors.size(), nullptr);
+        for (size_t macro_index = 0; macro_index < neighbors.size(); ++macro_index) {
+            moments_from_macrocells[macro_index] = this->_macrocells[neighbors[macro_index]].avg_moment;
+        }
+
+        return moments_from_macrocells;
     };
 
     virtual void updateMacrocells() override {
-        if (this->_macrocells.empty()) {
-            throw std::runtime_error("Cannot update macrocells before they are created.");
-        }
-
         for (auto &cell : _macrocells) { // Итерируем по существующим ячейкам
             size_t spin_count = cell.moment_indices.size();
             if (spin_count == 0)
@@ -365,7 +415,6 @@ class Geometry : public AbstractGeometry {
             return {};
 
         // проверяем кэш
-        auto cache_key = std::make_pair(index, cutoff_radius);
         if (this->hasInNeighborsCanche(index, cutoff_radius)) {
             return this->getFromNeighborsCache(index, cutoff_radius);
         }
@@ -469,7 +518,11 @@ inline void pyBindGeometries(py::module_ &module) {
         .def("update_macrocells", &AbstractGeometry::updateMacrocells)
         .def("get_macrocell_index_by_spin", &AbstractGeometry::getMacrocellIndexBySpin, py::arg("spin_index"))
         .def("get_macrocells", &AbstractGeometry::getMacrocells)
-        .def("create_macrocells_if_not_created", &AbstractGeometry::createMacrocellsIfNotCreated, py::arg("recreate") = false)
+        .def(
+            "create_macrocells_if_not_created",
+            &AbstractGeometry::createMacrocellsIfNotCreated,
+            py::arg("recreate") = false
+        )
         .def("clear_macrocells", &AbstractGeometry::clearMacrocells)
         .def(
             "__getitem__", &AbstractGeometry::operator[], py::arg("index"), py::return_value_policy::reference
@@ -477,11 +530,16 @@ inline void pyBindGeometries(py::module_ &module) {
         .doc() = "TODO";
 
     py::class_<Geometry, AbstractGeometry, std::shared_ptr<Geometry>>(cartesian, "Geometry")
-        .def(py::init<const std::vector<std::shared_ptr<Moment>> &, double>(), py::arg("moments"), py::arg("macrocell_size") = 1e-9)
+        .def(
+            py::init<const std::vector<std::shared_ptr<Moment>> &, double>(),
+            py::arg("moments"),
+            py::arg("macrocell_size") = 1e-9
+        )
         .def(
             py::init<const Eigen::MatrixXd &, MaterialRegistry &, double>(),
             py::arg("moments"),
-            py::arg("material_registry"), py::arg("macrocell_size") = 1e-9
+            py::arg("material_registry"),
+            py::arg("macrocell_size") = 1e-9
         )
         .doc() = "Простая геометрия, задаваемая в декартовой системе координат";
 }

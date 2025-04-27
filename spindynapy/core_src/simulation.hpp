@@ -327,8 +327,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
         // Инициализируем буфер эффективных полей нужного размера
         this->_effective_fields.resize(geometry->size(), EffectiveField::Zero());
-        // для принтинга
-        this->_step = 0;
+        this->_step = 0; // нулевой шаг - начальная конфигурация
         this->_previous_saved_step_time = std::chrono::system_clock::now();
         // сохранить начальную конфигурацию
         this->saveStep();
@@ -336,17 +335,20 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
     std::string __str__() const { return _geometry->__str__(); };
 
-    void simulateOneStep(bool save_step = false) {
+    void simulateOneStep(bool save_step = false, bool update_macrocells = true) {
         try {
+            this->_step += 1;
             if (!this->_system_prepared)
                 this->prepareSystem();
+            if (update_macrocells) {
+                this->_geometry->updateMacrocells();
+            }
             this->_current_time += this->_dt;
             this->calculateEffectiveFields();
             this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
             if (save_step) {
                 this->saveStep();
             }
-            this->_step += 1;
         } catch (const std::exception &e) {
             if (this->outstream) {
                 *this->outstream << "Error during simulation step: " << e.what() << std::endl;
@@ -355,9 +357,9 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
     };
 
-    void simulateManySteps(uint steps, uint save_every_step = 1) {
+    void simulateManySteps(uint steps, uint save_every_step = 1, uint update_macrocells_every_step = 1) {
         for (uint i = 0; i < steps; ++i) {
-            simulateOneStep(i % save_every_step == 0);
+            simulateOneStep(i % save_every_step == 0, i % update_macrocells_every_step == 0);
         }
     };
 
@@ -425,14 +427,16 @@ inline void pyBindSimulation(py::module_ &module) {
             "simulate_one_step",
             &Simulation::simulateOneStep,
             py::call_guard<py::gil_scoped_release>(),
-            py::arg("save_step") = false
+            py::arg("save_step") = false,
+            py::arg("update_macrocells") = true
         )
         .def(
             "simulate_many_steps",
             &Simulation::simulateManySteps,
             py::call_guard<py::gil_scoped_release>(),
             py::arg("steps"),
-            py::arg("save_every_step") = 1
+            py::arg("save_every_step") = 1,
+            py::arg("update_macrocells_every_step") = 1
         )
         .def("get_steps", &Simulation::getSteps, py::return_value_policy::reference)
         .def("clear_steps", &Simulation::clearSteps)
