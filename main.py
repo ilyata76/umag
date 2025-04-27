@@ -89,7 +89,7 @@ class NumpyGeometryManager:
         lattice_constant: XYZ,
         size: XYZ,
         material: Material,
-        initial_direction: ThetaPhi | None = None,
+        initial_direction: XYZ | None = None,
     ) -> np.typing.ArrayLike:
         """TODO"""
         nx, ny, nz = (
@@ -107,11 +107,10 @@ class NumpyGeometryManager:
                     coords[idx, 1] = j * lattice_constant.y
                     coords[idx, 2] = k * lattice_constant.z  # todo HCP, cubic etc.. сложнее
                     if not initial_direction:
-                        theta = np.random.uniform(0, np.pi)
-                        phi = np.random.uniform(0, 2 * np.pi)
-                        coords[idx, 3] = np.sin(theta) * np.cos(phi)
-                        coords[idx, 4] = np.sin(theta) * np.sin(phi)
-                        coords[idx, 5] = np.cos(theta)
+                        initial_direction = XYZ(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
+                    coords[idx, 3] = initial_direction.x
+                    coords[idx, 4] = initial_direction.y
+                    coords[idx, 5] = initial_direction.z
                     coords[idx, 6] = matnumber
                     idx += 1
         return coords
@@ -217,7 +216,7 @@ if __name__ == "__main__":
             cutoff_radius=nano(3), strategy="macrocells"
         ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
-        # InteractionEnum.EXTERNAL.value: ExternalInteraction(50, 0.05, 0.0),
+        InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
     }
 
     # --- МАТЕРИАЛЫ ---
@@ -227,7 +226,6 @@ if __name__ == "__main__":
     # --- РЕШАТЕЛЬ ---
 
     llg_solver = LLGSolver(strategy=SolverStrategy.HEUN)
-    dt = femto(1)
 
     # --- ЗАПУСК ---
 
@@ -235,17 +233,18 @@ if __name__ == "__main__":
     process(
         material_registry=material_registry,
         interaction_registry=InteractionRegistry(interactions),
-        codename="_111_10x10x0_Co_Relaxation_macrocells_aaaaasss2dszsssasdasssssssd6_",
+        codename="_320x10x0_Co_Relaxation_macrocells_",
         solver=llg_solver,
-        time_step=dt,
-        steps=1_000_000,
-        save_every_step=10_000,
-        update_macrocells_every_step=1000,
+        time_step=femto(1),
+        steps=500_000,
+        save_every_step=1_000,
+        update_macrocells_every_step=100,
         macrocell_size=nano(1),
         generate_geometry_args={
             "lattice_constant": XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
-            "size": XYZ(nano(10), nano(10), 0),
+            "size": XYZ(nano(320), nano(20), 0),
             "material": mat_lib["Co"],
-            "initial_direction": None,  # random
+            "initial_direction": XYZ(-1, 0, 0),
         },
+        load_geometry_path="./temp/_320x10x0_Co_Relaxation_macrocells_/RESULT"
     )
