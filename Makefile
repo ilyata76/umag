@@ -12,10 +12,10 @@ build-all:
 	$(POETRY) install
 
 build-spindynapy:  # e.g. : make build-spindynapy FLAGS=-v
-	$(PIP) install $(PROJECT_ROOT)/spindynapy $(FLAGS)
+	ASAN_OPTIONS=detect_leaks=0 DEBUG=1 $(PIP) install $(PROJECT_ROOT)/spindynapy $(FLAGS)
 
 build-release:  # Релизная сборка с DEBUG=FALSE
-	DEBUG=0 $(PIP) install $(PROJECT_ROOT)/spindynapy
+	DEBUG=0 ASAN_OPTIONS=detect_leaks=0 $(PIP) install $(PROJECT_ROOT)/spindynapy
 
 format:
 	find $(PROJECT_ROOT)/spindynapy/core_src -regex '.*\.\(cpp\|hpp\|cc\|cxx\)' -exec $(CLANG_FORMAT) -style=file -i {} \;
@@ -37,7 +37,7 @@ clean-all: clean-spindynapy
 	rm -rf $(PROJECT_ROOT)/.cache
 
 run:
-	$(POETRY) run python main.py
+	ASAN_OPTIONS=detect_leaks=0 $(POETRY) run python main.py
 
 # TODO надо мочь находить python, создавать окружение, etc...
 # TODO надо мочь запускать Makefile откуда угодно, чтобы не ломались пути

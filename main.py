@@ -45,7 +45,7 @@ mat_lib: dict[str, Material] = {
         atomic_magnetic_saturation_magnetization=1.72,  # в му_B
         damping_constant=0.5,
         gyromagnetic_ratio=constants.FREE_SPIN_GYROMAGNETIC_RATIO,
-        anisotropy=UniaxialAnisotropy(np.array([1.0, 0.0, 0.0]), 6.69e-24),  # Дж
+        anisotropy=UniaxialAnisotropy(np.array([-1.0, 0.0, 0.0]), 6.69e-24),  # Дж
     )
 }
 
@@ -106,11 +106,9 @@ class NumpyGeometryManager:
                     coords[idx, 0] = i * lattice_constant.x
                     coords[idx, 1] = j * lattice_constant.y
                     coords[idx, 2] = k * lattice_constant.z  # todo HCP, cubic etc.. сложнее
-                    if not initial_direction:
-                        initial_direction = XYZ(np.random.uniform(0, 1), np.random.uniform(0, 1), np.random.uniform(0, 1))
-                    coords[idx, 3] = initial_direction.x
-                    coords[idx, 4] = initial_direction.y
-                    coords[idx, 5] = initial_direction.z
+                    coords[idx, 3] = initial_direction.x if initial_direction else np.random.uniform(-1, 1)
+                    coords[idx, 4] = initial_direction.y if initial_direction else np.random.uniform(-1, 1)
+                    coords[idx, 5] = initial_direction.z if initial_direction else np.random.uniform(-1, 1)
                     coords[idx, 6] = matnumber
                     idx += 1
         return coords
@@ -132,6 +130,26 @@ def simulate(
         # шаги симуляции
         for i in range(steps):
             simulation.simulate_one_step(i % save_every_step == 0, i % update_macrocells_every_step == 0)
+    finally:
+        print(f"[PYTHON] Simulation time: {time.time() - start_time:.2f} seconds")
+
+
+def simulate_and_save_every_step(
+    simulation: Simulation,
+    output_dir: str,
+    steps: int = 100,
+    save_every_step: int = 2,
+    update_macrocells_every_step: int = 2,
+) -> None:
+    print("[PYTHON] Simulation started at", time.strftime("%H:%M:%S"))
+    try:
+        start_time = time.time()
+        # шаги симуляции
+        for i in range(steps):
+            simulation.simulate_one_step(i % save_every_step == 0, i % update_macrocells_every_step == 0)
+            if i % save_every_step == 0:
+                with open(f"{output_dir}/sconfiguration-{i:08d}.vvis", mode="w") as file:
+                    file.writelines(simulation.get_steps()[-1].vvisString())
     finally:
         print(f"[PYTHON] Simulation time: {time.time() - start_time:.2f} seconds")
 
@@ -179,23 +197,23 @@ def process(
         solver=solver,
         material_registry=material_registry,
         interaction_registry=interaction_registry,
-        dt=time_step,
-        use_openmp=True,
+        dt=time_step
     )
 
     try:
-        simulate(
+        simulate_and_save_every_step(
             simulation,
+            output_dir,
             steps=steps,
             save_every_step=save_every_step,
             update_macrocells_every_step=update_macrocells_every_step,
         )
     finally:
         # --- СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
-        print(f"[PYTHON] Saving results for {simulation.get_steps().__len__()} steps")
-        for index, elem in enumerate(simulation.get_steps()):
-            with open(f"{output_dir}/sconfiguration-{index:08d}.vvis", mode="w") as file:
-                file.writelines(elem.vvisString())
+        # print(f"[PYTHON] Saving results for {simulation.get_steps().__len__()} steps")
+        # for index, elem in enumerate(simulation.get_steps()):
+        #     with open(f"{output_dir}/sconfiguration-{index:08d}.vvis", mode="w") as file:
+        #         file.writelines(elem.vvisString())
 
         print(f"[PYTHON] Saving geometry in {output_dir}/RESULT as numpy array")
         NumpyGeometryManager.save_geometry(
@@ -213,10 +231,10 @@ if __name__ == "__main__":
     interactions = {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.51)),
         InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(3), strategy="macrocells"
+            cutoff_radius=nano(20), strategy="macrocells"
         ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
-        InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
+        # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
     }
 
     # --- МАТЕРИАЛЫ ---
@@ -230,21 +248,40 @@ if __name__ == "__main__":
     # --- ЗАПУСК ---
 
     print("[PYTHON] Starting simulation with MACROCELLS demag")
+    # process(
+    #     material_registry=material_registry,
+    #     interaction_registry=InteractionRegistry(interactions),
+    #     codename="_120x120x0_Co_Relaxation_macrocells_CONTINUES_(4)",
+    #     solver=llg_solver,
+    #     time_step=femto(1),
+    #     steps=1_000_000,
+    #     save_every_step=5_000,
+    #     update_macrocells_every_step=100,
+    #     macrocell_size=nano(1),
+    #     generate_geometry_args={
+    #         "lattice_constant": XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
+    #         "size": XYZ(nano(120), nano(120), 0),
+    #         "material": mat_lib["Co"],
+    #         "initial_direction": None,
+    #     },
+    #     load_geometry_path="./temp/_120x120x0_Co_Relaxation_macrocells_(3)/RESULT"
+    # )
+
     process(
         material_registry=material_registry,
         interaction_registry=InteractionRegistry(interactions),
-        codename="_320x10x0_Co_Relaxation_macrocells_",
+        codename="100x100x0_Co_Relaxation_macrocells_30nmcutoff___",
         solver=llg_solver,
         time_step=femto(1),
-        steps=500_000,
-        save_every_step=1_000,
-        update_macrocells_every_step=100,
-        macrocell_size=nano(1),
+        steps=1_000_000,
+        save_every_step=500,
+        update_macrocells_every_step=10,
+        macrocell_size=nano(2),
         generate_geometry_args={
             "lattice_constant": XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
-            "size": XYZ(nano(320), nano(20), 0),
+            "size": XYZ(nano(100), nano(100), 0),
             "material": mat_lib["Co"],
-            "initial_direction": XYZ(-1, 0, 0),
+            "initial_direction": None,
         },
-        load_geometry_path="./temp/_320x10x0_Co_Relaxation_macrocells_/RESULT"
+        # load_geometry_path="./temp/____TEST4____40x40x0_Co_Relaxation_macrocells_____/INITIAL",
     )

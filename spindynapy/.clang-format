@@ -4,6 +4,11 @@ TabWidth: 4  # ширина табуляции
 UseTab: Never  # всегда использовать пробелы вместо табов
 ColumnLimit: 110  # максимальная длина строки
 
+AlwaysBreakAfterReturnType: None  # запретить автоматический разрыв после return-типа
+PenaltyReturnTypeOnItsOwnLine: 100000  # высокое число «штрафа» за вынесенный return-type
+
+AlwaysBreakAfterDefinitionReturnType: None
+
 AllowShortFunctionsOnASingleLine: Inline  # короткие функции в одну строку (включая тело с {})
 AlignAfterOpenBracket: BlockIndent  # если переносить, то с новой строки с отступом
 BinPackArguments: false  # не запаковывать аргументы

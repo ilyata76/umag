@@ -10,31 +10,36 @@
 
 namespace py = pybind11;
 
-namespace spindynapy::constants {
+#define PYTHON_API [[]]
 
-constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1.256637061e-6; // Н/А^2 или Гн/м
-constexpr auto NUMBER_PI = 3.14159;
-constexpr auto BOHR_MAGNETON = 9.2740100783e-24;                          // Дж/Тл (или А*м^2)
-constexpr auto PLANCK_CONSTANT = 6.62607015e-34;                          // Дж/Гц
-constexpr auto REDUCED_PLANCK_CONSTANT = PLANCK_CONSTANT / 2 / NUMBER_PI; // Дж * сек
-constexpr auto FREE_SPIN_LANDE_FACTOR = 2;
-constexpr auto FREE_SPIN_GYROMAGNETIC_RATIO =
+namespace PYTHON_API spindynapy {
+namespace PYTHON_API constants {
+
+PYTHON_API constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1.256637061e-6; // Н/А^2 или Гн/м
+PYTHON_API constexpr auto NUMBER_PI = 3.14159;
+PYTHON_API constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // Дж/Тл (или А*м^2)
+PYTHON_API constexpr auto PLANCK_CONSTANT = 6.62607015e-34; // Дж/Гц
+PYTHON_API constexpr auto REDUCED_PLANCK_CONSTANT = PLANCK_CONSTANT / 2 / NUMBER_PI; // Дж * сек
+PYTHON_API constexpr auto FREE_SPIN_LANDE_FACTOR = 2;
+PYTHON_API constexpr auto FREE_SPIN_GYROMAGNETIC_RATIO =
     FREE_SPIN_LANDE_FACTOR * BOHR_MAGNETON / REDUCED_PLANCK_CONSTANT; // rad/(s*T) ~ 1.76e11
 
-namespace sci {
+namespace PYTHON_API sci {
 
-constexpr auto mu0 = VACUUM_MAGNETIC_PERMEABILITY;
-constexpr auto pi = NUMBER_PI;
-constexpr auto mu_B = BOHR_MAGNETON;
-constexpr auto h = PLANCK_CONSTANT;
-constexpr auto h_rad = REDUCED_PLANCK_CONSTANT;
-constexpr auto fe_lande = FREE_SPIN_LANDE_FACTOR;
-constexpr auto fe_gamma = FREE_SPIN_GYROMAGNETIC_RATIO;
+PYTHON_API constexpr auto mu0 = VACUUM_MAGNETIC_PERMEABILITY;
+PYTHON_API constexpr auto pi = NUMBER_PI;
+PYTHON_API constexpr auto mu_B = BOHR_MAGNETON;
+PYTHON_API constexpr auto h = PLANCK_CONSTANT;
+PYTHON_API constexpr auto h_rad = REDUCED_PLANCK_CONSTANT;
+PYTHON_API constexpr auto fe_lande = FREE_SPIN_LANDE_FACTOR;
+PYTHON_API constexpr auto fe_gamma = FREE_SPIN_GYROMAGNETIC_RATIO;
 
-}; // namespace sci
+}; // namespace PYTHON_API sci
 
-}; // namespace spindynapy::constants
+}; // namespace PYTHON_API constants
+}; // namespace PYTHON_API spindynapy
 
+// Привязка констант к Python
 inline void pyBindConstants(py::module_ &module) {
     using namespace spindynapy::constants;
 

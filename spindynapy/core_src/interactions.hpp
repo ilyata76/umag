@@ -2,8 +2,11 @@
 #define __INTERACTIONS_HPP__
 
 /**
- * Интерфейсы взаимодействий между элементами системы.
- * Таковыми могут быть потенциальные поля, силы, etc.
+ * Интерфейсы и реализации взаимодействий в выбранной системе координат в симуляции.
+ *   Абстрагируют взаимодействие между моментами в геометрии.
+ *   Предоставляют интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.
+ *
+ * Взаимодействия могут быть с внешнием полем, между моментами и т.д.
  */
 
 #include "constants.hpp"
@@ -20,63 +23,97 @@
 
 namespace py = pybind11;
 
-namespace spindynapy {
+namespace PYTHON_API spindynapy {
 
 /**
- * Базовый интерфейс взаимодействий (сил, полей, etc.)
+ * Базовый интерфейс взаимодействий в выбранной системе координат.
+ *
+ * Абстрагирует взаимодействие между моментами в геометрии.
+ *   Предоставляет интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.
  */
-template <CoordSystemConcept CoordSystem> class IInteraction {
+template <CoordSystemConcept CoordSystem> class PYTHON_API IInteraction {
   protected:
+    // конструктор только для наследников
     IInteraction() = default;
 
   public:
+    // деструктор
     virtual ~IInteraction() = default;
 
-    virtual void
-    prepareData(size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry) {
-        throw std::logic_error("Method saveStepBuffer Not implemented");
-    }
-
-    virtual EffectiveField calculateFieldContribution(
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
+    PYTHON_API virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry
-    ) const {
-        throw std::logic_error("Method calculateFieldContribution Not implemented");
-    };
+    ) const = 0;
 
-    virtual std::string __str__() const { return nullptr; };
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual double calculateEnergy(CoordSystem::Moment &moment, EffectiveField &field) const = 0;
 
-    virtual std::string __repr__() const { return nullptr; };
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const = 0;
+
+    // строковое представление для принтинга (TODO заменить на ostream/stringstream)
+    PYTHON_API virtual std::string __str__() const = 0;
 };
 
-/**
- * Обменное взаимодействие
+/*
+ * Регистр взаимодействий (см. registires.hpp).
+ *   Позволяет хранить и управлять различными взаимодействиями в системе.
+ *
+ * Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,
+ *    которые необходимо учитывать при расчёте эффективного поля на моменте.
  */
+template <CoordSystemConcept CoordSystem>
+using InteractionRegistry = PYTHON_API Registry<IInteraction<CoordSystem>>;
 
-template <CoordSystemConcept CoordSystem> using InteractionRegistry = Registry<IInteraction<CoordSystem>>;
+// ^
+// | base template interfaces
+// |
+// ================= NEW_BLOCK ===================
+// |
+// | cartesian realization of interfaces (namespace cartesian)
+// v
 
-namespace cartesian {
+namespace PYTHON_API cartesian {
 
-using AbstractInteraction = IInteraction<NamespaceCoordSystem>;
+/**
+ * Базовый интерфейс взаимодействий в выбранной (декартовой) системе координат.
+ *
+ * Абстрагирует взаимодействие между моментами в декартовой геометрии.
+ *   Предоставляет интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.
+ */
+using AbstractInteraction = PYTHON_API IInteraction<NamespaceCoordSystem>;
 
-class ExchangeInteraction : public AbstractInteraction {
+/*
+ * Обменное взаимодействие между моментами.
+ *
+ * Выбранная стратегия - радиус обрезки: считаются все соседи в радиусе обрезки.
+ *   Модель Гейзенберга.
+ *
+ * TODO: формулу сюда вставить
+ */
+class PYTHON_API ExchangeInteraction : public AbstractInteraction {
   protected:
+    // раидус обрезки соседей (внутри которого будем считать)
     double _cutoff_radius;
 
   public:
-    ExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
+    // базовый конструктор
+    PYTHON_API ExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
 
-    virtual void prepareData(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) override {
-        // обновить кэш по соседям
-        geometry.getNeighbors(moment_index, this->_cutoff_radius);
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
+        const override {
+        const auto &current_material = moment.getMaterial();
+        const auto &direction = moment.getDirection().asVector();
+        const auto current_moment_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        return -current_moment_norm * direction.dot(field);
     }
 
-    virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) const override {
-        // H = (J over abs(magnetic_moment)) * SUM on S_neighbors
-        // S = mu / |mu| normalized (!)
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual EffectiveField
+    calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
+        const override {
         EffectiveField exchange_field = EffectiveField::Zero();
         auto &current_moment = geometry[moment_index];
         auto &current_material = current_moment.getMaterial();
@@ -97,35 +134,51 @@ class ExchangeInteraction : public AbstractInteraction {
         return exchange_field;
     }
 
-    virtual std::string __str__() const override {
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const override { return "EXCHANGE"; }
+
+    // строковое представление для принтинга
+    PYTHON_API virtual std::string __str__() const override {
         return std::format("ExchangeInteraction(r={})", _cutoff_radius);
-    };
-    virtual std::string __repr__() const override {
-        return std::format("ExchangeInteraction(cutoff_radius={})", _cutoff_radius);
     };
 };
 
-class ExternalInteraction : public AbstractInteraction {
+/*
+ * Взаимодействие с внешним полем.
+ *
+ * TODO: формулу сюда вставить
+ */
+class PYTHON_API ExternalInteraction : public AbstractInteraction {
   protected:
     Eigen::Vector3d external_field;
 
   public:
-    ExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
-    ExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
+    // конструктор по умолчанию
+    PYTHON_API ExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
+    // конструктор по умолчанию
+    PYTHON_API ExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
 
-    virtual void prepareData(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) override {
-        return;
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
+        const override {
+        const auto &current_material = moment.getMaterial();
+        const auto &direction = moment.getDirection().asVector();
+        const auto current_moment_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        return -current_moment_norm * direction.dot(field);
     }
 
-    virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) const override {
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual EffectiveField
+    calculateFieldContribution(size_t, IGeometry<NamespaceCoordSystem> &, MaterialRegistry &) const override {
         return this->external_field;
     }
 
-    virtual std::string __str__() const override {
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const override { return "EXTERNAL"; }
+
+    // строковое представление для принтинга
+    PYTHON_API virtual std::string __str__() const override {
         return std::format(
             "ExternalInteraction(field=({}, {}, {}))",
             this->external_field.x(),
@@ -133,31 +186,36 @@ class ExternalInteraction : public AbstractInteraction {
             this->external_field.z()
         );
     };
-
-    virtual std::string __repr__() const override {
-        return std::format(
-            "ExternalInteraction(sx={}, sy={}, sz={})",
-            this->external_field.x(),
-            this->external_field.y(),
-            this->external_field.z()
-        );
-    };
 };
 
-class AnisotropyInteraction : public AbstractInteraction {
+/*
+ * Воздействие на моменты в силу магнитной анизотропии.
+ *
+ * Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)
+ *   рассчитывается вклад в эффективное поле на моменте.
+ *
+ * TODO: формулу сюда вставить
+ */
+class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
   public:
-    AnisotropyInteraction() {};
+    // конструктор по умолчанию
+    PYTHON_API AnisotropyInteraction() {};
 
-    virtual void prepareData(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) override {
-        return;
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
+        const override {
+        const auto &current_material = moment.getMaterial();
+        const auto &direction = moment.getDirection().asVector();
+        const auto current_moment_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        return -current_moment_norm * direction.dot(field);
     }
 
-    virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) const override {
-
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual EffectiveField
+    calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
+        const override {
+        //
         auto &moment = geometry[moment_index];
         auto &material = moment.getMaterial();
         auto anisotropy = material.anisotropy;
@@ -175,22 +233,35 @@ class AnisotropyInteraction : public AbstractInteraction {
 
         throw std::invalid_argument("Unsupported anisotropy type");
     }
+
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const override { return "ANISOTROPY"; }
+
+    // строковое представление для принтинга
+    PYTHON_API virtual std::string __str__() const override { return "AnisotropyInteraction()"; };
 };
 
-class DemagnetizationInteraction : public AbstractInteraction {
+/*
+ * Магнитостатическое взаимодействие между моментами.
+ *
+ * В зависимости от выбранной стратегии (cutoff или macrocells)
+ *   рассчитывается вклад в эффективное поле на моменте.
+ *
+ * 1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по величинам.
+ * 2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.
+ *
+ * TODO: формулу сюда вставить
+ */
+class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
   protected:
     std::string _strategy;
     double _cutoff_radius;
 
+    // посчитать энергию взаимодействия между моментом и другими, полученных по стратегии
     EffectiveField calculate(
-        Moment &current_moment,
-        Material &current_material,
-        MomentsContainer<NamespaceCoordSystem> calculation_moments
+        Moment &current_moment, Material &, MomentsContainer<NamespaceCoordSystem> calculation_moments
     ) const {
         EffectiveField demagnetization_field = EffectiveField::Zero();
-
-        auto atomic_magnetic_moments_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
 
         for (auto moment : calculation_moments) {
             auto distance_vector =
@@ -217,27 +288,28 @@ class DemagnetizationInteraction : public AbstractInteraction {
     }
 
   public:
-    DemagnetizationInteraction(double cutoff_radius, std::string strategy = "cutoff")
+    // базовый конструктор
+    PYTHON_API DemagnetizationInteraction(double cutoff_radius, std::string strategy = "cutoff")
         : _strategy(strategy), _cutoff_radius(cutoff_radius) {
         if (strategy != "cutoff" && strategy != "macrocells") {
             throw std::invalid_argument("Invalid strategy string");
         }
     };
 
-    virtual void prepareData(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) override {
-        if (this->_strategy == "cutoff") {
-            geometry.getNeighbors(moment_index, this->_cutoff_radius);
-        } else if (this->_strategy == "macrocells") {
-            geometry.createMacrocellsIfNotCreated(false);
-            auto t = geometry.getMomentsFromMacrocells(moment_index, this->_cutoff_radius);
-        }
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
+        const override {
+        const auto &current_material = moment.getMaterial();
+        const auto &direction = moment.getDirection().asVector();
+        const auto current_moment_norm =
+            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        return -current_moment_norm * direction.dot(field);
     }
 
-    virtual EffectiveField calculateFieldContribution(
-        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &material_registry
-    ) const override {
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual EffectiveField
+    calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
+        const override {
         auto &current_moment = geometry[moment_index];
         auto &current_material = current_moment.getMaterial();
 
@@ -252,25 +324,82 @@ class DemagnetizationInteraction : public AbstractInteraction {
         // Если не удалось найти подходящую стратегию
         throw std::invalid_argument("Invalid strategy string");
     }
+
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const override { return "DEMAGNETIZATION"; }
+
+    // строковое представление для принтинга
+    PYTHON_API virtual std::string __str__() const override {
+        return std::format(
+            "DemagnetizationInteraction(cutoff_radius={}, strategy={})", this->_cutoff_radius, this->_strategy
+        );
+    };
 };
 
-using InteractionRegistry = InteractionRegistry<NamespaceCoordSystem>;
+/*
+ * Регистр взаимодействий (см. registires.hpp).
+ *   Позволяет хранить и управлять различными взаимодействиями в системе.
+ *
+ * Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,
+ *    которые необходимо учитывать при расчёте эффективного поля на моменте.
+ */
+using InteractionRegistry = PYTHON_API InteractionRegistry<NamespaceCoordSystem>;
 
-}; // namespace cartesian
+}; // namespace PYTHON_API cartesian
 
-}; // namespace spindynapy
+}; // namespace PYTHON_API spindynapy
 
+// ^
+// | cartesian realization of interfaces (namespace cartesian)
+// |
+// ================= NEW_BLOCK ===================
+// |
+// | MACROSES and BINDINGS for PYTHON
+// v
+
+#define INTERACTION_TEMPLATE_BINDINGS(cls)                                                                   \
+    .def("__str__", &cls::__str__, py::doc("строковое представление для принтинга"))                         \
+        .def(                                                                                                \
+            "calculate_field_contribution",                                                                  \
+            &cls::calculateFieldContribution,                                                                \
+            py::arg("moment_index"),                                                                         \
+            py::arg("geometry"),                                                                             \
+            py::arg("material_registry"),                                                                    \
+            py::doc("посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии")           \
+        )                                                                                                    \
+        .def(                                                                                                \
+            "calculate_energy",                                                                              \
+            &cls::calculateEnergy,                                                                           \
+            py::arg("moment"),                                                                               \
+            py::arg("field"),                                                                                \
+            py::doc("посчитать энергию взаимодействия между моментом и приложенным эффективным полем")       \
+        )                                                                                                    \
+        .def("get_name", &cls::getName, py::doc("получить название взаимодействия"))
+
+// функция для связывания взаимодействий с Python
 inline void pyBindInteractions(py::module_ &module) {
     using namespace spindynapy;
 
     // -------- | INTERACTIONS | --------
     py::module_ interaction_module = module.def_submodule("interactions");
 
-    interaction_module.doc() = "Интерфейсы взаимодействий между элементами системы.\n"
-                               "Таковыми могут быть потенциальные поля, силы, etc. \n";
+    interaction_module.doc() =
+        "Интерфейсы и реализации взаимодействий в выбранной системе координат в симуляции.\n"
+        "  Абстрагируют взаимодействие между моментами в геометрии.\n"
+        "  Предоставляют интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.\n"
+        "\n"
+        "Взаимодействия могут быть с внешнием полем, между моментами и т.д.";
 
     // -------- | CARTESIAN INTERACTIONS | --------
     py::module_ cartesian = interaction_module.def_submodule("cartesian");
+
+    cartesian.doc() =
+        "Интерфейсы и реализации взаимодействий в выбранной системе (ДЕКАРТОВОЙ) координат в симуляции.\n"
+        "  Абстрагируют взаимодействие между моментами в геометрии.\n"
+        "  Предоставляют интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.\n"
+        "\n"
+        "Взаимодействия могут быть с внешнием полем, между моментами и т.д.";
+    ;
 
     using cartesian::AbstractInteraction;
     using cartesian::AnisotropyInteraction;
@@ -280,47 +409,64 @@ inline void pyBindInteractions(py::module_ &module) {
     using cartesian::InteractionRegistry;
 
     py::class_<AbstractInteraction, std::shared_ptr<AbstractInteraction>>(cartesian, "AbstractInteraction")
-        .def("__str__", &AbstractInteraction::__str__)
-        .def("__repr__", &AbstractInteraction::__repr__)
-        .def(
-            "calculate_field_contribution",
-            &AbstractInteraction::calculateFieldContribution,
-            py::arg("moment_index"),
-            py::arg("geometry"),
-            py::arg("material_registry")
-        )
-        .doc() = "Базовый интерфейс взаимодействий (сил, полей, etc.)";
+        INTERACTION_TEMPLATE_BINDINGS(AbstractInteraction)
+            .doc() =
+        "Базовый интерфейс взаимодействий в выбранной (декартовой) системе координат.\n"
+        "\n"
+        "Абстрагирует взаимодействие между моментами в геометрии.\n"
+        "  Предоставляет интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.";
 
     py::class_<ExchangeInteraction, AbstractInteraction, std::shared_ptr<ExchangeInteraction>>(
         cartesian, "ExchangeInteraction"
     )
         .def(py::init<double>(), py::arg("cutoff_radius"))
-        .doc() = "Обменное взаимодействие";
+        .doc() = "Обменное взаимодействие между моментами.\n"
+                 "\n"
+                 "Выбранная стратегия - радиус обрезки: считаются все соседи в радиусе обрезки.\n"
+                 "  Модель Гейзенберга.";
 
     py::class_<ExternalInteraction, AbstractInteraction, std::shared_ptr<ExternalInteraction>>(
         cartesian, "ExternalInteraction"
     )
         .def(py::init<const Eigen::Vector3d &>(), py::arg("external_field"))
         .def(py::init<double, double, double>(), py::arg("sx"), py::arg("sy"), py::arg("sz"))
-        .doc() = "Взаимодействие с внешним полем";
+        .doc() = "Взаимодействие с внешним полем.\n"
+                 "\n"
+                 "Выбранная стратегия: просто поле в Тл";
 
     py::class_<AnisotropyInteraction, AbstractInteraction, std::shared_ptr<AnisotropyInteraction>>(
         cartesian, "AnisotropyInteraction"
     )
         .def(py::init())
-        .doc() = "оси магнитной анизотропии";
+        .doc() = "Воздействие на моменты в силу магнитной анизотропии.\n"
+                 "\n"
+                 "Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)\n"
+                 "  рассчитывается вклад в эффективное поле на моменте.";
 
     py::class_<DemagnetizationInteraction, AbstractInteraction, std::shared_ptr<DemagnetizationInteraction>>(
         cartesian, "DemagnetizationInteraction"
     )
         .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
-        .doc() = "demag";
+        .doc() = "Магнитостатическое взаимодействие между моментами.\n"
+                 "\n"
+                 "В зависимости от выбранной стратегии (cutoff или macrocells)\n"
+                 "  рассчитывается вклад в эффективное поле на моменте.\n"
+                 "\n"
+                 "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
+                 "величинам.\n"
+                 "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.";
 
     py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(cartesian, "InteractionRegistry")
         .def(py::init<>())
         .def(py::init<RegistryContainer<AbstractInteraction>>(), py::arg("container"))
-            BUILD_REGISTRY_TEMPLATE_METHODS(InteractionRegistry)
-        .doc() = "Интерфейс для регистра-контейнера для разных взаимодействий";
+            REGISTRY_TEMPLATE_BINDINGS(InteractionRegistry)
+        .doc() =
+        "Регистр взаимодействий (см. registires.hpp).\n"
+        "  Позволяет хранить и управлять различными взаимодействиями в системе.\n"
+        "\n"
+        "Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,\n"
+        "   которые необходимо учитывать при расчёте эффективного поля на моменте.\n"
+        "БЕЗ ЗАПИСИ => ПОТОКОБЕЗОПАСНЫЙ";
 }
 
 #endif // ! __INTERACTIONS_HPP__

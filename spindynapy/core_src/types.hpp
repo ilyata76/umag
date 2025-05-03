@@ -84,9 +84,9 @@ class Material {
         : material_number(material_number),
           exchange_constant_J(exchange_constant_J),
           atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
-          damping_constant(damping_constant),
+          anisotropy(anisotropy),
           gyromagnetic_ratio(gyromagnetic_ratio),
-          anisotropy(anisotropy) {};
+          damping_constant(damping_constant) {};
 
     regnum getNumber() const { return this->material_number; };
     std::string __str__() const { return std::to_string(this->material_number); };

@@ -144,6 +144,7 @@ class CMakeBuild(build_ext):
         lib_dir = Path.cwd()
         new_environ = os.environ.copy()
         new_environ["PYTHONPATH"] = f"{lib_dir}:{os.environ.get('PYTHONPATH', '')}"
+        new_environ["ASAN_OPTIONS"] = "detect_leaks=0"  # отключение поиска утечек в этом процессе
         # запуск
         subprocess.run(
             [str(stubgen_bin), SPINDYNAPY_CORE_NAME, "-o", str(lib_dir)],

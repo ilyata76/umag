@@ -2,16 +2,14 @@
 #define __SOLVERS_HPP__
 
 /**
- * Решатели (интеграторы) берут на себя задачу эволюционирования
- * или любого другого прогрессирования системы в зависимости от
- * предоставленных внешних параметров.
- * Абстракция решателя - именно метод. Фиксируется внутри системы координат (коих немного).
+ * Решатель - это абстракция, которая берёт на себя задачу
+ *  эволюционирования или любого другого прогрессирования системы в зависимости от
+ *  предоставленных внешних параметров.
+ *
+ * Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN
  */
 
-// полиморфный решатель: шаблонный метод + IF PREPROCESSOR ELSE.
-// решатель может реализовать сколь угодно много подвидов своих алгоритмов
-// через функции, вызов которых разрешается при раскрытии <темплейта CoordSystem>
-
+#include "constants.hpp"
 #include "geometries.hpp"
 #include "types.hpp"
 
@@ -25,35 +23,61 @@
 
 namespace py = pybind11;
 
-namespace spindynapy {
-
-enum class SolverStrategy { EULER = 0, HEUN = 1 };
+namespace PYTHON_API spindynapy {
 
 /**
- * Базовый интерфейс решателя-интегратора
+ * Стратегия решателя (интегратора) - метод интегрирования.
+ *
+ * EULER - метод Эйлера (самый простой)
+ * HEUN - метод Хьюна (метод предиктор-корректор, улучшенный метод Эйлера)
  */
+enum class PYTHON_API SolverStrategy { EULER = 0, HEUN = 1 };
 
-template <CoordSystemConcept CoordSystem> class ISolver {
+/**
+ * Базовый интерфейс решателя (интегратора) в выбранной системе координат.
+ *
+ * Решатель - это абстракция, которая берёт на себя задачу
+ *  эволюционирования или любого другого прогрессирования системы в зависимости от
+ *  предоставленных внешних параметров.
+ */
+template <CoordSystemConcept CoordSystem> class PYTHON_API ISolver {
   protected:
+    // конструктор только для наследников
     ISolver() = default;
 
   public:
+    // деструктор
     virtual ~ISolver() = default;
 
-    virtual void
-    updateMoments(IGeometry<CoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt) {
-        throw std::logic_error("The solving Not implemented");
-    }
+    // обновить моменты в геометрии исходя из приложенных к ним эффективных полей
+    PYTHON_API virtual void updateMoments(
+        IGeometry<CoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
+    ) = 0;
 };
 
 namespace cartesian {
 
-using AbstractSolver = ISolver<NamespaceCoordSystem>;
+/**
+ * Базовый интерфейс решателя (интегратора) в выбранной (ДЕКАРТОВОЙ) системе координат.
+ *
+ * Решатель - это абстракция, которая берёт на себя задачу
+ *  эволюционирования или любого другого прогрессирования системы в зависимости от
+ *  предоставленных внешних параметров.
+ */
+using AbstractSolver = PYTHON_API ISolver<NamespaceCoordSystem>;
 
+/**
+ * Решатель ЛЛГ (Ландау-Лифшица-Гильберта) - это решатель, который использует
+ *  уравнение ЛЛГ спиновой динамики для обновления моментов в геометрии.
+ *
+ * Решатель использует метод Эйлера или метод Хойна для интегрирования уравнения ЛЛГ с шагом dt.
+ */
 class LLGSolver : public AbstractSolver {
   protected:
+    // выбранная стратегия решателя (интегратора) - метод интегрирования
     SolverStrategy _strategy;
 
+    // вычисление изменения момента по уравнению ЛЛГ (правая часть уравнения) (TODO: команда + стратегия)
     Eigen::Vector3d calculateLLGMomentChange(
         Material &material, Eigen::Vector3d moment_vector, Eigen::Vector3d effective_field
     ) {
@@ -67,6 +91,7 @@ class LLGSolver : public AbstractSolver {
         return moment_change;
     }
 
+    // решение по методу Эйлера: сделать шаг с конечными разностями
     virtual void updateMomentsViaEuler(
         IGeometry<NamespaceCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) {
@@ -84,6 +109,8 @@ class LLGSolver : public AbstractSolver {
         }
     }
 
+    // решение по методу Хойна: сделать шаг с конечными разностями, но дважды (+корректор с подсчитанными
+    // полями)
     virtual void updateMomentsViaHeun(
         IGeometry<NamespaceCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) {
@@ -110,13 +137,14 @@ class LLGSolver : public AbstractSolver {
     }
 
   public:
+    // базовый конструктор
     LLGSolver(SolverStrategy strategy = SolverStrategy::EULER) : _strategy(strategy) {};
 
+    // обновить моменты в геометрии исходя из приложенных к ним эффективных полей
     virtual void updateMoments(
         IGeometry<NamespaceCoordSystem> &geometry, std::vector<EffectiveField> effective_fields, double dt
     ) override {
-        // geometry и effective_fields связаны через индексную привязку
-        // effective_fields[i] AT geometry[i]
+        // geometry и effective_fields связаны через индексную привязку effective_fields[i] ON geometry[i]
         assert(geometry.size() == effective_fields.size());
 
         if (this->_strategy == SolverStrategy::EULER) {
@@ -124,12 +152,24 @@ class LLGSolver : public AbstractSolver {
         } else if (this->_strategy == SolverStrategy::HEUN) {
             return this->updateMomentsViaHeun(geometry, effective_fields, dt);
         };
+
+        throw std::invalid_argument("Invalid solver strategy enum value / doesnt support");
     };
 };
 
 }; // namespace cartesian
 
-}; // namespace spindynapy
+}; // namespace PYTHON_API spindynapy
+
+#define ABSTRACTSOLVER_TEMPLATE_BINDINGS(cls)                                                                \
+    .def(                                                                                                    \
+        "update_moments",                                                                                    \
+        &cls::updateMoments,                                                                                 \
+        py::arg("geometry"),                                                                                 \
+        py::arg("effective_fields"),                                                                         \
+        py::arg("dt"),                                                                                       \
+        py::doc("обновить моменты в геометрии исходя из приложенных к ним эффективных полей")                \
+    )
 
 inline void pyBindSolvers(py::module_ &module) {
     using namespace spindynapy;
@@ -137,35 +177,47 @@ inline void pyBindSolvers(py::module_ &module) {
     // -------- | SOLVERS | --------
     py::module_ solvers_module = module.def_submodule("solvers");
 
-    solvers_module.doc() = "Модуль решателей\n"
-                           "Решатели (интеграторы) берут на себя задачу эволюционирования\n"
-                           "или любого другого прогрессирования системы в зависимости от\n"
-                           "предоставленных внешних параметров.";
+    solvers_module.doc() = "Решатель - это абстракция, которая берёт на себя задачу\n"
+                           " эволюционирования или любого другого прогрессирования системы в зависимости от\n"
+                           " предоставленных внешних параметров.\n"
+                           "\n"
+                           "Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN, ...";
 
     // Биндим enum
     py::enum_<SolverStrategy>(solvers_module, "SolverStrategy")
-        .value("EULER", SolverStrategy::EULER)
-        .value("HEUN", SolverStrategy::HEUN);
+        .value("EULER", SolverStrategy::EULER, "Метод Эйлера (самый простой)")
+        .value(
+            "HEUN",
+            SolverStrategy::HEUN,
+            "Метод Хойна (предиктор-корректор (2 расчёта), улучшенный метод Эйлера)"
+        );
 
     // -------- | CARTESIAN SOLVERS | --------
     py::module_ cartesian = solvers_module.def_submodule("cartesian");
+
+    cartesian.doc() = "Решатель - это абстракция, которая берёт на себя задачу\n"
+                      " эволюционирования или любого другого прогрессирования системы в зависимости от\n"
+                      " предоставленных внешних параметров.\n"
+                      "\n"
+                      "Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN, ...";
 
     using cartesian::AbstractSolver;
     using cartesian::LLGSolver;
 
     py::class_<AbstractSolver, std::shared_ptr<AbstractSolver>>(cartesian, "AbstractSolver")
-        .def(
-            "update_moments",
-            &AbstractSolver::updateMoments,
-            py::arg("geometry"),
-            py::arg("effective_fields"),
-            py::arg("dt")
-        )
-        .doc() = "по сути - базовый абстрактный солвер, в декартовых координатах";
+        ABSTRACTSOLVER_TEMPLATE_BINDINGS(AbstractSolver)
+            .doc() = "Базовый интерфейс решателя (интегратора) в выбранной (ДЕКАРТОВОЙ) системе координат.\n"
+                     "  Решатель - это абстракция, которая берёт на себя задачу\n"
+                     "  эволюционирования или любого другого прогрессирования системы в зависимости от\n"
+                     "  предоставленных внешних параметров.";
 
     py::class_<LLGSolver, AbstractSolver, std::shared_ptr<LLGSolver>>(cartesian, "LLGSolver")
         .def(py::init<SolverStrategy>(), py::arg("strategy") = SolverStrategy::EULER)
-        .doc() = "солвер Ландау-Лифшица-Гильберта в декартовых координатах (классический алгоритм)";
+        .doc() =
+        "Решатель ЛЛГ (Ландау-Лифшица-Гильберта) - это решатель, который использует\n"
+        "  уравнение ЛЛГ спиновой динамики для обновления моментов в геометрии.\n"
+        "\n"
+        "  Решатель использует метод Эйлера или метод Хойна для интегрирования уравнения ЛЛГ с шагом dt.";
 }
 
 #endif // ! __SOLVERS_HPP__

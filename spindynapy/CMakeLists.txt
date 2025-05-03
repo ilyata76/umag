@@ -14,8 +14,31 @@ set(CPM_USE_LOCAL_PACKAGES ON CACHE BOOL "Use local packages if available")
 set(CPM_SOURCE_CACHE "${CMAKE_SOURCE_DIR}/build-deps/" CACHE PATH "Path to CPM source cache")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Оптимизация для Release
+# Флаги для Release сборки
+# -O3 - максимальная оптимизация
+# -march=native - оптимизация под архитектуру текущего процессора (может снизить переносимость бинарника)
+# -flto - Link-Time Optimization (оптимизация на этапе линковки)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto")
+
+# Флаги для Debug сборки
+# -g - добавить отладочные символы (обязательно для GDB/LLDB)
+# -O0 - отключить оптимизацию (упрощает отладку, т.к. код не переупорядочивается)
+# -fsanitize=address - включить AddressSanitizer (ASan) для поиска ошибок памяти
+# -fsanitize=undefined - включить UndefinedBehaviorSanitizer (UBSan) для поиска неопределенного поведения
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0 -fsanitize=address -static-libasan -fsanitize=undefined")
+
+# Флаги для Debug сборки для cland-сервера
+# -Wall - Базовые предупреждения
+# -Wextra - Дополнительные полезные предупреждения
+# -Wpedantic - Строгое соблюдение стандарта
+# -Wshadow - Тени переменных (особенно актуально в lambdas и циклах)
+# -Wconversion - неявные преобразования
+# -Wduplicated-cond - Повторяющиеся условия в if/else
+# -Wduplicated-branches - Повторяющиеся блоки if/else
+# -Wlogical-op - Подозрительные логические операции
+# -Wuseless-cast - Бесполезные касты (особенно при привязке к pybind)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wuseless-cast")
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 # python3-dev headers (!!!)
@@ -74,6 +97,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module OpenMP::OpenMP_CXX)
 
+# Включаем LTO для Release сборок через свойство цели (замена -flto)
 set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION True)
 
 # Копирует compile_commands.json в корень проекта после конфигурации
@@ -82,5 +106,6 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy
         "${CMAKE_BINARY_DIR}/compile_commands.json"
         "${CMAKE_SOURCE_DIR}/compile_commands.json"
+    COMMENT "Copying compile_commands.json to source directory"
 )
 
