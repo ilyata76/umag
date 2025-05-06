@@ -147,6 +147,10 @@ class Coordinates {
         return;
     }
 
+    double operator[](size_t index) const {
+        return _coords[index];
+    }
+
     Eigen::Vector3d &asVector() { return this->_coords; }
 
     void setCoordinates(Eigen::Vector3d coords) {
@@ -187,6 +191,10 @@ class Direction {
         _vector = vector;
         _vector.normalize();
         return;
+    }
+
+    double operator[](size_t index) const {
+        return _vector[index]; // или _coords[index] — зависит от класса
     }
 
     Eigen::Vector3d &asVector() { return this->_vector; }
@@ -371,12 +379,20 @@ inline void pyBindTypes(py::module_ &module) {
         .def(py::init<const Eigen::Vector3d &>(), py::arg("coords"))
         .def("get_distance_from", &Coordinates::getDistanceFrom, py::arg("other"))
         .def("get_distance_square_from", &Coordinates::getDistanceSquareFrom, py::arg("other"))
+        .def("__getitem__", &Coordinates::operator[], py::arg("index"))
+        .def_property_readonly("x", [](const Coordinates &v) { return v[0]; })
+        .def_property_readonly("y", [](const Coordinates &v) { return v[1]; })
+        .def_property_readonly("z", [](const Coordinates &v) { return v[2]; })
             BIND_STR_REPR(Coordinates)
         .doc() = "Декартовые координаты";
 
     py::class_<Direction>(cartesian, "Direction")
         .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
         .def(py::init<const Eigen::Vector3d &>(), py::arg("vector")) BIND_STR_REPR(Direction)
+        .def("__getitem__", &Direction::operator[], py::arg("index"))
+        .def_property_readonly("x", [](const Direction &v) { return v[0]; })
+        .def_property_readonly("y", [](const Direction &v) { return v[1]; })
+        .def_property_readonly("z", [](const Direction &v) { return v[2]; })
         .doc() = "Направление в декартовых координатах";
 
     py::class_<Moment, std::shared_ptr<Moment>>(cartesian, "Moment")

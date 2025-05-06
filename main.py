@@ -36,6 +36,9 @@ from spindynapy.cartesian import (  # type: ignore # noqa
     DemagnetizationInteraction,
     AnisotropyInteraction,
     Simulation,
+    save_data,
+    get_vvis_data,
+    get_shot_data
 )
 from spindynapy.unit import XYZ, nano, femto  # type: ignore # noqa
 from spindynapy.matlib import MaterialEnum, mat_lib  # type: ignore # noqa
@@ -49,14 +52,14 @@ class InteractionEnum(Enum):
     EXTERNAL = 3
 
 
-path_dir = "./temp/___COBALT_100x100_RELAX___"
+path_dir = "./temp/_____TSTS_____"
 makedirs(path_dir, exist_ok=True)
 
 numpy_geometry = NumpyGeometryManager.load_geometry(f"{path_dir}/INITIAL")
 if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
     numpy_geometry = NumpyGeometryManager.generate_parallelepiped_monomaterial_geometry(
         lattice_constant=XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
-        size=XYZ(nano(100), nano(100), 0),
+        size=XYZ(nano(1), nano(1), 0),
         material_number=mat_lib["Co"].get_number(),
         initial_direction=None,
     )
@@ -72,9 +75,9 @@ interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.51)),
         InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(20), strategy="macrocells"
+            cutoff_radius=nano(10), strategy="macrocells"
         ),
-        InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
+        # InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
     }
 )
@@ -87,7 +90,7 @@ simulation = Simulation(
     dt=femto(1),
 )
 
-steps, save_every_step, update_macrocells_every_step = 1_000_000, 10_000, 10
+steps, save_every_step, update_macrocells_every_step = 500_000, 2500, 10
 
 for i in range(steps):
     simulation.simulate_one_step(
@@ -95,6 +98,10 @@ for i in range(steps):
     )
     if i % save_every_step == 0:
         step_data = simulation.get_steps()[-1]
-        with open(f"{path_dir}/sconfiguration-{i:08d}.vvis", mode="w") as file:
-            file.writelines(step_data.vvisString())
+        save_data(
+            get_vvis_data(step_data, material_registry, interaction_registry),
+            f"{path_dir}/sconfiguration-{i:08d}.vvis"
+        )
         NumpyGeometryManager.save_geometry(f"{path_dir}/geometry-{i:08d}", step_data.geometry.as_numpy())
+        save_data(get_shot_data(step_data, material_registry, interaction_registry),
+                  f"{path_dir}/stepdata-{i:08d}.shot")

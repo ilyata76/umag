@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
-#include <format>
 #include <iostream>
 #include <memory>
 #ifdef _OPENMP // если OpenMP доступен (флаг компиляции, заголовки)
@@ -30,7 +29,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -42,6 +40,7 @@ using EffectiveFieldVector = std::vector<EffectiveField>;
 
 template <CoordSystemConcept CoordSystem> struct SimulationStepData {
     double time;
+    uint step;
     std::unique_ptr<IGeometry<CoordSystem>> geometry;
     // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
     EffectiveFieldVector total_fields;
@@ -56,81 +55,18 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
     // Конструктор
     SimulationStepData(
         double time,
+        uint step,
         std::unique_ptr<IGeometry<CoordSystem>> geometry,
         const EffectiveFieldVector &total_fields,
         const std::unordered_map<regnum, EffectiveFieldVector> &interaction_fields,
         const std::unordered_map<regnum, std::vector<double>> &interaction_energies
     )
         : time(time),
+          step(step),
           geometry(std::move(geometry)),
           total_fields(total_fields),
           interaction_fields(interaction_fields),
           interaction_energies(interaction_energies) {}
-
-    std::string __str__() const { return this->asString(false); };
-
-    std::string asString(bool use_descriptions = true) const {
-        std::string result = std::format(
-            "# Simulation Step Data for time {:.5e}. \n"
-            "# <i> <...Geometry[i]> <total_field value> <...interaction_fields values> \n",
-            time,
-            geometry->size()
-        );
-        for (size_t i = 0; i < geometry->size(); ++i) {
-            result +=
-                use_descriptions
-                    ? std::format(
-                          "[{}]\tmoment[x, y, z, sx, sy, sz, material]: {},\ttotal_field_norm: "
-                          "{:.5e} x: "
-                          "{:.5e} y: {:.5e} z: {:.5e}",
-                          i,
-                          (*geometry)[i].__str__(),
-                          total_fields[i].norm(),
-                          total_fields[i].x(),
-                          total_fields[i].y(),
-                          total_fields[i].z()
-                      )
-                    : std::format("{}\t{}\t{:.5e}", i, (*geometry)[i].__str__(), total_fields[i].norm());
-            for (const auto &[number, field_vector] : interaction_fields) {
-                result += use_descriptions
-                              ? std::format(
-                                    ", interaction[{}]_norm: {:.5e} x: {:.5e} y: {:.5e} z: {:.5e}",
-                                    number,
-                                    field_vector[i].norm(),
-                                    field_vector[i].x(),
-                                    field_vector[i].y(),
-                                    field_vector[i].z()
-                                )
-                              : std::format(", {}: {:.5e}", number, field_vector[i].norm());
-            }
-            result += "\n";
-        }
-        return result;
-    }
-
-    std::string getEnergy() {
-        std::string result = "";
-        for (const auto &[number, energy_vector] : interaction_energies) {
-            double energy = 0;
-            for (size_t i = 0; i < energy_vector.size(); ++i) {
-                energy += energy_vector[i];
-            }
-            result += std::format("Interaction[{}]: {} \n", number, energy);
-        }
-        return result;
-    }
-
-    // temporary...
-    std::string vvisString() const {
-        std::stringstream ss;
-        ss << "# count \n"
-           << this->geometry->size() << "\n"
-           << "#M	L	X	Y	Z	SX	SY	SZ";
-        for (size_t i = 0; i < geometry->size(); ++i) {
-            ss << "\n" << (*geometry)[i].__str__();
-        }
-        return ss.str();
-    }
 };
 
 namespace cartesian {
@@ -289,6 +225,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
         this->steps.push_back(SimulationStepData<CoordSystem>(
             this->_current_time,
+            this->_step,
             this->_geometry->clone(),
             this->_effective_fields,
             this->_interaction_effective_fields,
@@ -409,17 +346,15 @@ inline void pyBindSimulation(py::module_ &module) {
 
     py::class_<SimulationStepData>(cartesian, "SimulationStepData")
         .def_readonly("time", &SimulationStepData::time)
+        .def_readonly("step", &SimulationStepData::step)
         .def_property_readonly(
             "geometry",
             [](const SimulationStepData &self) { return self.geometry.get(); },
             py::return_value_policy::reference_internal
         )
-        .def("__str__", &SimulationStepData::__str__)
-        .def("as_string", &SimulationStepData::asString, py::arg("use_descriptions") = true)
-        .def("vvisString", &SimulationStepData::vvisString)
-        .def("get_energy", &SimulationStepData::getEnergy)
         .def_readonly("total_fields", &SimulationStepData::total_fields)
         .def_readonly("interaction_fields", &SimulationStepData::interaction_fields)
+        .def_readonly("interaction_energies", &SimulationStepData::interaction_energies)
         .doc() = "Data structure holding simulation step information";
 
     py::class_<Simulation>(cartesian, "Simulation")
