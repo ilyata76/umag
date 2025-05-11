@@ -266,8 +266,9 @@ class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
         for (auto moment : calculation_moments) {
             auto distance_vector =
                 current_moment.getCoordinates().asVector() - moment->getCoordinates().asVector();
-            auto neighbor_atomistic_moment =
-                moment->getMaterial().atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+            auto neighbor_atomistic_moment = moment->amplitude *
+                                             moment->getMaterial().atomic_magnetic_saturation_magnetization *
+                                             constants::BOHR_MAGNETON;
             auto distance_norm = distance_vector.norm();
 
             if (distance_norm < 1e-15) {

@@ -52,14 +52,14 @@ class InteractionEnum(Enum):
     EXTERNAL = 3
 
 
-path_dir = "./temp/_____TSTS_____"
+path_dir = "./temp/___COBALT_10x10__MACRO_DEMAG_HCP_2_"
 makedirs(path_dir, exist_ok=True)
 
 numpy_geometry = NumpyGeometryManager.load_geometry(f"{path_dir}/INITIAL")
 if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
     numpy_geometry = NumpyGeometryManager.generate_hcp_monomaterial_parallelepiped(
         lattice_constant=XYZ(nano(0.2507), nano(0.2507), nano(0.408)),
-        size=XYZ(nano(10), nano(10), nano(0.1)),  # монослой
+        size=XYZ(nano(30), nano(30), nano(0.1)),  # монослой
         material_number=mat_lib["Co"].get_number(),
         initial_direction=None,
         base_shift=None,
@@ -76,7 +76,7 @@ interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.45)),
         InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(4), strategy="cutoff"
+            cutoff_radius=nano(10), strategy="macrocells"
         ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
@@ -91,7 +91,7 @@ simulation = Simulation(
     dt=femto(1),
 )
 
-steps, save_every_step, update_macrocells_every_step = 500_000, 2500, 10
+steps, save_every_step, update_macrocells_every_step = 500_000, 100, 10
 
 for i in range(steps):
     simulation.simulate_one_step(

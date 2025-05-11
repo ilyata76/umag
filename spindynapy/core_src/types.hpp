@@ -147,9 +147,7 @@ class Coordinates {
         return;
     }
 
-    double operator[](size_t index) const {
-        return _coords[index];
-    }
+    double operator[](size_t index) const { return _coords[index]; }
 
     Eigen::Vector3d &asVector() { return this->_coords; }
 
@@ -207,6 +205,11 @@ class Moment {
     std::unique_ptr<Coordinates> _coordinates;
     std::unique_ptr<Direction> _direction;
     std::shared_ptr<Material> _material;
+
+  public:
+    // коэффициент "амплитуды", усиления влияния момента (если класс момента, например, представляет несколько
+    // моментов)
+    double amplitude = 1.0;
 
   public:
     Moment(
@@ -382,8 +385,7 @@ inline void pyBindTypes(py::module_ &module) {
         .def("__getitem__", &Coordinates::operator[], py::arg("index"))
         .def_property_readonly("x", [](const Coordinates &v) { return v[0]; })
         .def_property_readonly("y", [](const Coordinates &v) { return v[1]; })
-        .def_property_readonly("z", [](const Coordinates &v) { return v[2]; })
-            BIND_STR_REPR(Coordinates)
+        .def_property_readonly("z", [](const Coordinates &v) { return v[2]; }) BIND_STR_REPR(Coordinates)
         .doc() = "Декартовые координаты";
 
     py::class_<Direction>(cartesian, "Direction")
@@ -407,6 +409,7 @@ inline void pyBindTypes(py::module_ &module) {
         .def("get_material", &Moment::getMaterial, py::return_value_policy::reference)
         .def("get_coordinates", &Moment::getCoordinates, py::return_value_policy::reference)
         .def("get_direction", &Moment::getDirection, py::return_value_policy::reference)
+        .def_readonly("amplitude", &Moment::amplitude)
         .doc() = "TODO";
 
     // -------- | SPHERICAL TYPES | --------

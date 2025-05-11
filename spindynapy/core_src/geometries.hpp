@@ -451,6 +451,9 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
             std::shared_ptr<Moment> moment = nullptr;
             std::shared_ptr<Material> material = nullptr;
 
+            // "общая" намагниченность насыщения (для определения веса)
+            double total_weight = 0.0;
+
             // обход по всем моментам в ячейке
             for (size_t spin_idx : cell.moment_indices) {
                 moment = (*this->_moments)[spin_idx];
@@ -458,6 +461,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 avg_direction_vector += moment->getDirection().asVector();
                 if ((material = moment->getMaterialSharedPtr())) {
                     material_counts[material]++;
+                    total_weight += material->atomic_magnetic_saturation_magnetization;
                 }
             }
 
@@ -475,9 +479,17 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 }
             }
 
+            // мера организованности спинов (если все параллельные)
+            auto magnetic_organization_measue =
+                avg_direction_vector.norm(); // в интервале [0, 1], где 1 - полностью параллельные
+
             // наконец, обновляем момент в ячейке
             cell.avg_moment =
                 std::make_shared<Moment>(avg_coordinates_vector, avg_direction_vector, predominant_material);
+            // также определим "вес" для момента макроячейки (в простейшем случае = количество спинов в
+            // ячейке)
+            cell.avg_moment->amplitude = magnetic_organization_measue * total_weight /
+                                         predominant_material->atomic_magnetic_saturation_magnetization;
         }
     };
 
@@ -627,7 +639,9 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         for (const auto &moment : this->_moments) {
             cloned_moments.push_back(moment->clone());
         }
-        return std::make_unique<Geometry>(cloned_moments, this->macrocell_size);
+        auto cloned = std::make_unique<Geometry>(cloned_moments, this->macrocell_size);
+        cloned->prepareData();
+        return cloned;
     }
 
     // ---- ПРЕДСТАВЛЕНИЯ ----
@@ -638,13 +652,19 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         auto moments_len = this->_moments.size();
         Eigen::MatrixXd numpy_matrix(moments_len, 7);
         for (size_t i = 0; i < moments_len; ++i) {
-            numpy_matrix(i, 0) = this->_moments[i]->getCoordinates().asVector().x();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 1) = this->_moments[i]->getCoordinates().asVector().y();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 2) = this->_moments[i]->getCoordinates().asVector().z();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 3) = this->_moments[i]->getDirection().asVector().x();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 4) = this->_moments[i]->getDirection().asVector().y();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 5) = this->_moments[i]->getDirection().asVector().z();  // NOLINT(*-sign-conversion)
-            numpy_matrix(i, 6) = this->_moments[i]->getMaterial().getNumber();  // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 0) =
+                this->_moments[i]->getCoordinates().asVector().x(); // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 1) =
+                this->_moments[i]->getCoordinates().asVector().y(); // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 2) =
+                this->_moments[i]->getCoordinates().asVector().z(); // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 3) =
+                this->_moments[i]->getDirection().asVector().x(); // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 4) =
+                this->_moments[i]->getDirection().asVector().y(); // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 5) =
+                this->_moments[i]->getDirection().asVector().z();              // NOLINT(*-sign-conversion)
+            numpy_matrix(i, 6) = this->_moments[i]->getMaterial().getNumber(); // NOLINT(*-sign-conversion)
         }
         return numpy_matrix;
     };

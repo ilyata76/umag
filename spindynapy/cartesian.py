@@ -32,6 +32,8 @@ def get_shot_data(
     interaction_registry: InteractionRegistry | None = None,  # noqa
 ) -> str:
     """TODO
+    TEMPORARY надо будет в С++ перенести и сделать нормальный принтер, который будет получать структуру и возвращать
+    строку
 
     Args:
         step_data (SimulationStepData): _description_
@@ -40,6 +42,7 @@ def get_shot_data(
         str: _description_
     """
     n_atoms = len(step_data.geometry)
+    n_macrocells = len(step_data.geometry.get_macrocells())
     id_width = max(len(str(n_atoms - 1)), len("id"))
 
     # === GENERALIZED DATA ===
@@ -79,14 +82,14 @@ def get_shot_data(
     result += (
         f" {'id':>{id_width}}"
         f" |{'mat':>4}"
-        f" |{'x[A]':>7}{'y[A]':>7}{'z[A]':>7}"
-        f" |{'sx':>10}{'sy':>10}{'sz':>10}"
-        f" |{'|H|':>15}{'Hx':>15}{'Hy':>15}{'Hz':>15}"
+        f" |{'x[A]':>10} {'y[A]':>10} {'z[A]':>10}"
+        f" |{'sx':>10} {'sy':>10} {'sz':>10}"
+        f" |{'|H|':>15} {'Hx':>15} {'Hy':>15} {'Hz':>15}"
     )
 
     for regnum in step_data.interaction_fields:
         result += (
-            f" |{f'|H[{regnum}]|':>15}" f"{f'H[{regnum}]_x':>15}{f'H[{regnum}]_y':>15}{f'H[{regnum}]_z':>15}"
+            f" |{f'|H[{regnum}]|':>15}" f"{f'H[{regnum}]_x':>15} {f'H[{regnum}]_y':>15} {f'H[{regnum}]_z':>15}"
         )
 
     for regnum in step_data.interaction_energies:
@@ -124,6 +127,11 @@ def get_shot_data(
         #     line += f" |{energy[i]:+15.5e}"
 
         # result += line + "\n"
+
+    result += "\n MACROCELLS:\n"
+
+    for i in range(n_macrocells):
+        result += step_data.shot_macrocell_line(i) + "\n"
 
     return result + "\n"
 
