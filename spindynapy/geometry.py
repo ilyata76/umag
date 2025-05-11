@@ -24,13 +24,20 @@ class NumpyGeometryManager:
         return loaded_numpy
 
     @staticmethod
-    def generate_parallelepiped_monomaterial_geometry(
+    def generate_sc_monomaterial_parallelepiped(
         lattice_constant: XYZ,
         size: XYZ,
         material_number: int,
         initial_direction: XYZ | None = None,
+        base_shift: XYZ | None = None,
     ) -> np.typing.ArrayLike:
-        """Сгенерировать параллелепипед из одного материала с заданными параметрами"""
+        """
+        Сгенерировать параллелепипед из одного материала с заданными параметрами.
+        В каждом слое: прямоугольная подрешётка по XY
+
+         - SC решётка
+         - параллельные слои
+        """
         nx, ny, nz = (
             int(size.x / lattice_constant.x) or 1,
             int(size.y / lattice_constant.y) or 1,
@@ -50,3 +57,46 @@ class NumpyGeometryManager:
                     coords[idx, 6] = material_number
                     idx += 1
         return coords
+
+    @staticmethod
+    def generate_hcp_monomaterial_parallelepiped(
+        lattice_constant: XYZ,
+        size: XYZ,
+        material_number: int,
+        initial_direction: XYZ | None = None,
+        base_shift: XYZ | None = None,
+    ) -> np.typing.ArrayLike:
+        """
+        Сгенерировать параллелепипед из одного материала с заданными параметрами.
+        В каждом слое: треугольная подрешётка по XY.
+
+         - HCP решётка
+         - ABAB слоистость (со смещением)
+        """
+        a = lattice_constant.x
+        dy = a * np.sqrt(3) / 2
+        c = lattice_constant.z
+
+        nx = int(size.x / a) or 1
+        ny = int(size.y / dy) or 1
+        nz = int(size.z / c) or 1
+
+        coords_list = []
+
+        for k in range(nz):
+            z = k * c
+            shift_x = a / 2 if k % 2 == 1 else 0
+            shift_y = dy / 3 if k % 2 == 1 else 0
+
+            for j in range(ny):
+                y = j * dy + shift_y
+                for i in range(nx):
+                    x = i * a + (a / 2 if j % 2 else 0) + shift_x
+
+                    sx = initial_direction.x if initial_direction else np.random.uniform(-1, 1)
+                    sy = initial_direction.y if initial_direction else np.random.uniform(-1, 1)
+                    sz = initial_direction.z if initial_direction else np.random.uniform(-1, 1)
+
+                    coords_list.append([x, y, z, sx, sy, sz, material_number])
+
+        return np.array(coords_list)

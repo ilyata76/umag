@@ -57,11 +57,12 @@ makedirs(path_dir, exist_ok=True)
 
 numpy_geometry = NumpyGeometryManager.load_geometry(f"{path_dir}/INITIAL")
 if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
-    numpy_geometry = NumpyGeometryManager.generate_parallelepiped_monomaterial_geometry(
-        lattice_constant=XYZ(nano(0.2507), nano(0.2507), nano(0.2507)),
-        size=XYZ(nano(1), nano(1), 0),
+    numpy_geometry = NumpyGeometryManager.generate_hcp_monomaterial_parallelepiped(
+        lattice_constant=XYZ(nano(0.2507), nano(0.2507), nano(0.408)),
+        size=XYZ(nano(10), nano(10), nano(0.1)),  # монослой
         material_number=mat_lib["Co"].get_number(),
         initial_direction=None,
+        base_shift=None,
     )
     NumpyGeometryManager.save_geometry(f"{path_dir}/INITIAL", numpy_geometry)
 
@@ -73,11 +74,11 @@ solver = LLGSolver(strategy=SolverStrategy.HEUN)
 
 interaction_registry = InteractionRegistry(
     {
-        InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.51)),
+        InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.45)),
         InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(10), strategy="macrocells"
+            cutoff_radius=nano(4), strategy="cutoff"
         ),
-        # InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
+        InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
     }
 )

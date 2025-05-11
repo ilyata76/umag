@@ -97,30 +97,33 @@ def get_shot_data(
     result += "\n"
 
     for i in range(n_atoms):
-        moment = step_data.geometry[i]
-        mat_number = moment.get_material().get_number()
-        c = moment.get_coordinates()
-        s = moment.get_direction()
-        H = step_data.total_fields[i]
-        H_norm = sum(H[j] ** 2 for j in range(3)) ** 0.5
+        result += step_data.shot_line(i) + "\n"
+        # moment = step_data.geometry[i]
+        # mat_number = moment.get_material().get_number()
+        # c = moment.get_coordinates()
+        # s = moment.get_direction()
+        # H = step_data.total_fields[i]
+        # H_norm = sum(H[j] ** 2 for j in range(3)) ** 0.5
 
-        line = (
-            f" {i:>{id_width}d}"
-            f" |{mat_number:>4d}"
-            f" |{c.x * 1e10:7.4f}{c.y * 1e10:7.4f}{c.z * 1e10:7.4f}"
-            f" |{s.x:+10.5f}{s.y:+10.5f}{s.z:+10.5f}"
-            f" |{H_norm:+15.5e}{H[0]:+15.5e}{H[1]:+15.5e}{H[2]:+15.5e}"
-        )
+        # print(i)
 
-        for regnum, field_vec in step_data.interaction_fields.items():
-            F = field_vec[i]
-            F_norm = sum(F[j] ** 2 for j in range(3)) ** 0.5
-            line += f" |{F_norm:+15.5e}{F[0]:+15.5e}{F[1]:+15.5e}{F[2]:+15.5e}"
+        # line = (
+        #     f" {i:>{id_width}d}"
+        #     f" |{mat_number:>4d}"
+        #     f" |{c.x * 1e10:7.4f}{c.y * 1e10:7.4f}{c.z * 1e10:7.4f}"
+        #     f" |{s.x:+10.5f}{s.y:+10.5f}{s.z:+10.5f}"
+        #     f" |{H_norm:+15.5e}{H[0]:+15.5e}{H[1]:+15.5e}{H[2]:+15.5e}"
+        # )
 
-        for regnum, energy in step_data.interaction_energies.items():
-            line += f" |{energy[i]:+15.5e}"
+        # for regnum, field_vec in step_data.interaction_fields.items():
+        #     F = field_vec[i]
+        #     F_norm = sum(F[j] ** 2 for j in range(3)) ** 0.5
+        #     line += f" |{F_norm:+15.5e}{F[0]:+15.5e}{F[1]:+15.5e}{F[2]:+15.5e}"
 
-        result += line + "\n"
+        # for regnum, energy in step_data.interaction_energies.items():
+        #     line += f" |{energy[i]:+15.5e}"
+
+        # result += line + "\n"
 
     return result + "\n"
 

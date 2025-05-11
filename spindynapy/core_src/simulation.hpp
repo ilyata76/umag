@@ -67,6 +67,44 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
           total_fields(total_fields),
           interaction_fields(interaction_fields),
           interaction_energies(interaction_energies) {}
+
+    std::string shot_line(size_t idx)  /* без const! */ {
+            const size_t nAtoms = geometry->size();
+            const size_t idW    = std::max<size_t>(std::to_string(nAtoms-1).length(), 2);
+        
+            auto& m = (*geometry)[idx];            // non-const Moment
+            int   mat = m.getMaterial().getNumber();
+        
+            auto& c  = m.getCoordinates();         // Coordinates
+            auto& s  = m.getDirection();           // Direction
+        
+            const auto& Ht = total_fields[idx];
+            double Hn = std::sqrt(Ht[0]*Ht[0] + Ht[1]*Ht[1] + Ht[2]*Ht[2]);
+        
+            std::ostringstream ss;
+            ss.setf(std::ios::fixed, std::ios::floatfield);
+        
+            ss << ' ' << std::setw(idW) << idx
+               << " |" << std::setw(4)  << mat
+               << " |" << std::setw(7) << std::setprecision(4) <<  c[0]*1e10
+                          << std::setw(7) <<                      c[1]*1e10
+                          << std::setw(7) <<                      c[2]*1e10
+               << " |" << std::setw(10) << std::showpos << std::setprecision(5)
+                          << s[0] << std::setw(10) << s[1] << std::setw(10) << s[2]
+               << " |" << std::setw(15) << std::scientific << std::setprecision(5)
+                          << Hn  << std::setw(15) << Ht[0] << std::setw(15) << Ht[1] << std::setw(15) << Ht[2];
+        
+            for (const auto& [reg, vec] : interaction_fields) {
+                const auto& F = vec[idx];
+                double Fn = std::sqrt(F[0]*F[0] + F[1]*F[1] + F[2]*F[2]);
+                ss << " |" << std::setw(15) << Fn
+                   << std::setw(15) << F[0] << std::setw(15) << F[1] << std::setw(15) << F[2];
+            }
+            for (const auto& [reg, evec] : interaction_energies)
+                ss << " |" << std::setw(15) << evec[idx];
+        
+            return ss.str();
+        }
 };
 
 namespace cartesian {
@@ -355,6 +393,9 @@ inline void pyBindSimulation(py::module_ &module) {
         .def_readonly("total_fields", &SimulationStepData::total_fields)
         .def_readonly("interaction_fields", &SimulationStepData::interaction_fields)
         .def_readonly("interaction_energies", &SimulationStepData::interaction_energies)
+        .def("shot_line",
+            &SimulationStepData::shot_line,
+            py::arg("index"))
         .doc() = "Data structure holding simulation step information";
 
     py::class_<Simulation>(cartesian, "Simulation")
