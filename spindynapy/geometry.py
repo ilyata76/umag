@@ -1,6 +1,6 @@
 import numpy as np
 
-from .unit import XYZ
+from .unit import XYZ, LatticeConstant
 
 
 class NumpyGeometryManager:
@@ -60,7 +60,7 @@ class NumpyGeometryManager:
 
     @staticmethod
     def generate_hcp_monomaterial_parallelepiped(
-        lattice_constant: XYZ,
+        lattice_constant: LatticeConstant,
         size: XYZ,
         material_number: int,
         initial_direction: XYZ | None = None,
@@ -73,18 +73,18 @@ class NumpyGeometryManager:
          - HCP решётка
          - ABAB слоистость (со смещением)
         """
-        a = lattice_constant.x
+        a = lattice_constant.a
         dy = a * np.sqrt(3) / 2
-        c = lattice_constant.z
+        layer_height = lattice_constant.c / 2  # половина кристаллографического c
 
         nx = int(size.x / a) or 1
         ny = int(size.y / dy) or 1
-        nz = int(size.z / c) or 1
+        nz = int(size.z / layer_height) or 1   # пересчитываем число слоёв
 
         coords_list = []
 
         for k in range(nz):
-            z = k * c
+            z = k * layer_height
             shift_x = a / 2 if k % 2 == 1 else 0
             shift_y = dy / 3 if k % 2 == 1 else 0
 

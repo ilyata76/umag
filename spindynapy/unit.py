@@ -17,10 +17,10 @@ nano = Unit(1e-9)
 """Нано, 10^-9"""
 
 pico = Unit(1e-12)
-"""Пико, 10^-9"""
+"""Пико, 10^-12"""
 
 femto = Unit(1e-15)
-"""Фемто, 10^-9"""
+"""Фемто, 10^-15"""
 
 
 class XYZ:
@@ -30,6 +30,14 @@ class XYZ:
         self.x = x
         self.y = y
         self.z = z
+
+
+class LatticeConstant:
+    """Класс для определения векторов/координат/etc. в 3D пространстве."""
+
+    def __init__(self, a: float, c: float) -> None:
+        self.a = a
+        self.c = c
 
 
 class ThetaPhi:

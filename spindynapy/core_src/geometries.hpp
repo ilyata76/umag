@@ -14,6 +14,7 @@
 #include "registries.hpp"
 #include "types.hpp"
 
+#include <format>
 #include <memory>
 #include <object.h>
 #include <pybind11/detail/common.h>
@@ -99,8 +100,14 @@ template <CoordSystemConcept CoordSystem> class PYTHON_API IMacrocellManager {
     // обнулить набор макроячеек
     PYTHON_API virtual void clearMacrocells() = 0;
 
-    // получить контейнер моментов из макроячейки по индексу макроячейки (TODO возвращать ссылку из кэша
-    // всегда)
+    // получить размер макроячейки
+    virtual double getMacrocellSize() const = 0;
+
+    // получить объём макроячейки
+    virtual double getMacrocellVolume() const = 0;
+
+    // получить контейнер моментов из макроячейки по индексу макроячейки
+    // (TODO возвращать ссылку из кэша всегда)
     virtual MomentsContainer<CoordSystem> getMomentsFromMacrocells(size_t index, double cutoff_radius) = 0;
 };
 
@@ -266,7 +273,8 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         size_t ix = 0, iy = 0, iz = 0;
         size_t cell_idx = 0;
 
-        this->_spin2cell.reserve(num_spins);
+        // запись по индексу будет
+        this->_spin2cell.resize(num_spins);
 
         // Карта для группировки индексов (индекс_ячейки, индексы_спинов)
         std::map<size_t, std::vector<size_t>> spins_by_cell_indicies;
@@ -357,7 +365,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
     PYTHON_API virtual size_t getMacrocellIndexBySpin(size_t spin_index) override {
         std::shared_lock lock(_mutex);
         if (spin_index >= this->_spin2cell.size()) {
-            throw std::out_of_range("Spin index out of range (для него нет макроячейки...)");
+            throw std::out_of_range(std::format("Spin index out of range (<{}>)", this->_spin2cell.size()));
         }
         return this->_spin2cell[spin_index];
     };
@@ -370,10 +378,17 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         }
     };
 
+    virtual double getMacrocellSize() const override { return this->macrocell_size; };
+
+    virtual double getMacrocellVolume() const override { return std::pow(this->macrocell_size, 3); };
+
     // получить контейнер моментов из макроячейки по индексу макроячейки
     virtual MomentsContainer<CartesianCoordSystem> getMomentsFromMacrocells(
         size_t index, double cutoff_radius
     ) override {
+        //
+        size_t my_cell_index = this->getMacrocellIndexBySpin(index);
+
         std::shared_lock read_cache_lock(_mutex);
         // проверка на нуль
         if (cutoff_radius <= 1e-15)
@@ -409,6 +424,8 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         // если расстояние от момента до центра макроячейки меньше радиуса обрезки,
         // то сохраняем в "соседей" индекс ячейки
         for (size_t i = 0; i < _macrocells.size(); ++i) {
+            if (my_cell_index == i)
+                continue; // пропускаем свою ячейку
             const double distance =
                 target_coords.getDistanceFrom(_macrocells[i].avg_moment->getCoordinates());
             if (distance <= cutoff_radius) {
@@ -604,8 +621,8 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         for (size_t i = 0; i < this->_moments.size(); ++i) {
             if (i == index)
                 continue; // себя не считаем
-            const double distance_sq = target_coords.getDistanceFrom(_moments[i]->getCoordinates());
-            if (distance_sq <= cutoff_radius) {
+            const double distance = target_coords.getDistanceFrom(_moments[i]->getCoordinates());
+            if (distance <= cutoff_radius) {
                 neighbors.push_back(i);
             }
         }

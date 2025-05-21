@@ -94,11 +94,12 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData {
         for (const auto &[reg, vec] : interaction_fields) {
             const auto &F = vec[idx];
             double Fn = std::sqrt(F[0] * F[0] + F[1] * F[1] + F[2] * F[2]);
-            ss << " |" << std::setw(15) << Fn << std::setw(15) << F[0] << std::setw(15) << F[1]
-               << std::setw(15) << F[2];
+            ss << " |" << std::setw(15) << Fn << " " << std::setw(15) << F[0] << " " << std::setw(15) << F[1]
+               << " " << std::setw(15) << F[2];
         }
-        for (const auto &[reg, evec] : interaction_energies)
+        for (const auto &[reg, evec] : interaction_energies) {
             ss << " |" << std::setw(15) << evec[idx];
+        }
 
         return ss.str();
     }

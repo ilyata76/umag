@@ -107,7 +107,8 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
         const auto &direction = moment.getDirection().asVector();
         const auto current_moment_norm =
             current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -current_moment_norm * direction.dot(field);
+        return -current_moment_norm / 2 *
+               direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
@@ -208,7 +209,9 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
         const auto &direction = moment.getDirection().asVector();
         const auto current_moment_norm =
             current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -current_moment_norm * direction.dot(field);
+
+        // из-за взятия производной от квадрата => / 2
+        return -current_moment_norm / 2 * direction.dot(field);
     }
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
@@ -242,7 +245,7 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
 };
 
 /*
- * Магнитостатическое взаимодействие между моментами.
+ * Магнитостатическое (диполь-дипольное) взаимодействие между моментами.
  *
  * В зависимости от выбранной стратегии (cutoff или macrocells)
  *   рассчитывается вклад в эффективное поле на моменте.
@@ -252,7 +255,7 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
  *
  * TODO: формулу сюда вставить
  */
-class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
+class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
   protected:
     std::string _strategy;
     double _cutoff_radius;
@@ -261,36 +264,36 @@ class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
     EffectiveField calculate(
         Moment &current_moment, Material &, MomentsContainer<NamespaceCoordSystem> calculation_moments
     ) const {
-        EffectiveField demagnetization_field = EffectiveField::Zero();
+        EffectiveField dipole_field = EffectiveField::Zero();
 
         for (auto moment : calculation_moments) {
             auto distance_vector =
-                current_moment.getCoordinates().asVector() - moment->getCoordinates().asVector();
+                moment->getCoordinates().asVector() - current_moment.getCoordinates().asVector();
+
             auto neighbor_atomistic_moment = moment->amplitude *
                                              moment->getMaterial().atomic_magnetic_saturation_magnetization *
                                              constants::BOHR_MAGNETON;
             auto distance_norm = distance_vector.norm();
 
-            if (distance_norm < 1e-15) {
+            if (distance_norm < 1e-30) {
                 // предотвратить деление на ноль (превращение в NaN)
                 continue;
             }
 
-            demagnetization_field +=
-                neighbor_atomistic_moment *
-                ((3 * moment->getDirection().asVector().dot(distance_vector) * distance_vector) /
-                     pow(distance_norm, 5) -
-                 moment->getDirection().asVector() / pow(distance_norm, 3));
+            dipole_field += neighbor_atomistic_moment *
+                            ((3 * moment->getDirection().asVector().dot(distance_vector) * distance_vector) /
+                                 pow(distance_norm, 5) -
+                             moment->getDirection().asVector() / pow(distance_norm, 3));
         }
-        demagnetization_field =
-            (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * demagnetization_field;
 
-        return demagnetization_field;
+        dipole_field = (constants::VACUUM_MAGNETIC_PERMEABILITY / 4 / constants::NUMBER_PI) * dipole_field;
+
+        return dipole_field;
     }
 
   public:
     // базовый конструктор
-    PYTHON_API DemagnetizationInteraction(double cutoff_radius, std::string strategy = "cutoff")
+    PYTHON_API DipoleDipoleInteraction(double cutoff_radius, std::string strategy = "cutoff")
         : _strategy(strategy), _cutoff_radius(cutoff_radius) {
         if (strategy != "cutoff" && strategy != "macrocells") {
             throw std::invalid_argument("Invalid strategy string");
@@ -304,7 +307,8 @@ class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
         const auto &direction = moment.getDirection().asVector();
         const auto current_moment_norm =
             current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -current_moment_norm * direction.dot(field);
+        return -0.5 * current_moment_norm * moment.amplitude *
+               direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
@@ -319,8 +323,78 @@ class PYTHON_API DemagnetizationInteraction : public AbstractInteraction {
             auto calculation_moments = geometry.getFromIndexes(neighbor_indices);
             return this->calculate(current_moment, current_material, calculation_moments);
         } else if (this->_strategy == "macrocells") {
+            // TODO как учесть внутри? получать список внутри ячейки находящихся
             auto calculation_moments = geometry.getMomentsFromMacrocells(moment_index, this->_cutoff_radius);
             return this->calculate(current_moment, current_material, calculation_moments);
+        }
+        // Если не удалось найти подходящую стратегию
+        throw std::invalid_argument("Invalid strategy string");
+    }
+
+    // получить название взаимодействия
+    PYTHON_API virtual std::string getName() const override { return "DIPOLE-DIPOLE"; }
+
+    // строковое представление для принтинга
+    PYTHON_API virtual std::string __str__() const override {
+        return std::format(
+            "DipoleDipoleInteraction(cutoff_radius={}, strategy={})", this->_cutoff_radius, this->_strategy
+        );
+    };
+};
+
+/**
+ * Считается, что взаимодействие между моментами в макроячейках
+ *   обосновывает т.н. энергию демагнетизации.
+ *
+ * Текущее взаимодействие - это диполь-дипольное взаимодействие между моментами в макроячейках,
+ *    с учётом демагнетизирующего характера.
+ *
+ * В зависимости от выбранной стратегии (cutoff или macrocells) рассчитывается вклад в эффективное поле на
+ * моменте.
+ *
+ * 1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по величинам.
+ *          Для макроячеек предусмотрен т.н. self-term, который считается через кубический фактор
+ *                  размагничивания. (см. VAMPIRE)
+ *
+ * 2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.
+ *
+ * TODO поправить описание... cutoff подходит для всех . а здесь просто ШТРАФ т.е. -(-E)
+ * и селф терм. а выше другой учёт у макроячеек
+ */
+class DemagnetizationInteraction : public DipoleDipoleInteraction {
+  public:
+    // базовый конструктор
+    PYTHON_API DemagnetizationInteraction(double cutoff_radius, std::string strategy = "macrocells")
+        : DipoleDipoleInteraction(cutoff_radius, strategy) {};
+
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API virtual EffectiveField
+    calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
+        const override {
+        auto &current_moment = geometry[moment_index];
+        auto &current_material = current_moment.getMaterial();
+
+        if (this->_strategy == "cutoff") {
+            auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
+            auto calculation_moments = geometry.getFromIndexes(neighbor_indices);
+            return this->calculate(current_moment, current_material, calculation_moments);
+        } else if (this->_strategy == "macrocells") {
+
+            auto calculation_moments = geometry.getMomentsFromMacrocells(moment_index, this->_cutoff_radius);
+
+            auto macrocell_moment =
+                geometry.getMacrocells()[geometry.getMacrocellIndexBySpin(moment_index)].avg_moment;
+
+            auto moment_term = macrocell_moment->amplitude * macrocell_moment->getDirection().asVector() *
+                               macrocell_moment->getMaterial().atomic_magnetic_saturation_magnetization *
+                               constants::BOHR_MAGNETON;
+
+            // TODO с VAMPIRE не сходится, почему?
+            auto self_term =
+                (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) * 
+                (moment_term / pow(geometry.getMacrocellSize(), 3));
+
+            return this->calculate(current_moment, current_material, calculation_moments) + self_term;
         }
         // Если не удалось найти подходящую стратегию
         throw std::invalid_argument("Invalid strategy string");
@@ -405,6 +479,7 @@ inline void pyBindInteractions(py::module_ &module) {
     using cartesian::AbstractInteraction;
     using cartesian::AnisotropyInteraction;
     using cartesian::DemagnetizationInteraction;
+    using cartesian::DipoleDipoleInteraction;
     using cartesian::ExchangeInteraction;
     using cartesian::ExternalInteraction;
     using cartesian::InteractionRegistry;
@@ -444,8 +519,8 @@ inline void pyBindInteractions(py::module_ &module) {
                  "Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)\n"
                  "  рассчитывается вклад в эффективное поле на моменте.";
 
-    py::class_<DemagnetizationInteraction, AbstractInteraction, std::shared_ptr<DemagnetizationInteraction>>(
-        cartesian, "DemagnetizationInteraction"
+    py::class_<DipoleDipoleInteraction, AbstractInteraction, std::shared_ptr<DipoleDipoleInteraction>>(
+        cartesian, "DipoleDipoleInteraction"
     )
         .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
         .doc() = "Магнитостатическое взаимодействие между моментами.\n"
@@ -456,6 +531,29 @@ inline void pyBindInteractions(py::module_ &module) {
                  "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
                  "величинам.\n"
                  "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.";
+
+    py::class_<
+        DemagnetizationInteraction,
+        DipoleDipoleInteraction,
+        std::shared_ptr<DemagnetizationInteraction>>(cartesian, "DemagnetizationInteraction")
+        .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
+        .doc() =
+        ("Считается, что взаимодействие между моментами в макроячейках\n"
+         "  обосновывает т.н. энергию демагнетизации.\n"
+         "\n"
+         "Текущее взаимодействие - это диполь-дипольное взаимодействие между моментами в макроячейках,\n"
+         "   с учётом демагнетизирующего характера.\n"
+         "\n"
+         "В зависимости от выбранной стратегии (cutoff или macrocells) рассчитывается вклад в эффективное "
+         "поле на моменте.\n"
+         "\n"
+         "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
+         "величинам.\n"
+         "         Для макроячеек предусмотрен т.н. self-term, который считается через кубический фактор "
+         "размагничивания.\n"
+         "          (см. VAMPIRE)\n"
+         "\n"
+         "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.");
 
     py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(cartesian, "InteractionRegistry")
         .def(py::init<>())
