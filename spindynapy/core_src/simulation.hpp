@@ -17,9 +17,6 @@
 #include <ctime>
 #include <iostream>
 #include <memory>
-#ifdef _OPENMP // если OpenMP доступен (флаг компиляции, заголовки)
-#include <omp.h>
-#endif
 #include <ostream>
 #include <pybind11/chrono.h>
 #include <pybind11/detail/common.h>
@@ -36,100 +33,44 @@ namespace py = pybind11;
 
 namespace PYTHON_API spindynapy {
 
-using EffectiveFieldVector = std::vector<EffectiveField>;
-
-template <CoordSystemConcept CoordSystem> struct SimulationStepData {
+template <CoordSystemConcept CoordSystem> struct SimulationStepData : public SolverData<CoordSystem> {
+  public:
     double time;
     uint step;
     std::unique_ptr<IGeometry<CoordSystem>> geometry;
-    // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
-    EffectiveFieldVector total_fields;
-    // STEP BUFFER <INTERACTION REGISTRY NUMBER, FIELD MASSIVE> связки через ИНДЕКСЫ
-    // т.е. inter_fields[0] - список конкретного поля по индексам.
-    // inter_fields[0][100] - конкретное поле на 100 атоме
-    std::unordered_map<regnum, EffectiveFieldVector> interaction_fields;
 
-    // поиндексная связка
-    std::unordered_map<regnum, std::vector<double>> interaction_energies;
+    SimulationStepData() {}; // TODO не забыть про nullptr и нулевые массивы...
 
     // Конструктор
     SimulationStepData(
         double time,
         uint step,
         std::unique_ptr<IGeometry<CoordSystem>> geometry,
-        const EffectiveFieldVector &total_fields,
-        const std::unordered_map<regnum, EffectiveFieldVector> &interaction_fields,
+        const EffectiveFieldVector &effective_fields,
+        std::vector<double> energies,
+        const std::unordered_map<regnum, EffectiveFieldVector> &interaction_effective_fields,
         const std::unordered_map<regnum, std::vector<double>> &interaction_energies
     )
-        : time(time),
+        : SolverData<CoordSystem>(
+              effective_fields, energies, interaction_effective_fields, interaction_energies
+          ),
+          time(time),
           step(step),
-          geometry(std::move(geometry)),
-          total_fields(total_fields),
-          interaction_fields(interaction_fields),
-          interaction_energies(interaction_energies) {}
+          geometry(std::move(geometry)) {};
 
-    std::string shot_line(size_t idx) /* без const! */ {
-        const size_t nAtoms = geometry->size();
-        const size_t idW = std::max<size_t>(std::to_string(nAtoms - 1).length(), 2);
-
-        auto &m = (*geometry)[idx]; // non-const Moment
-        int mat = m.getMaterial().getNumber();
-
-        auto &c = m.getCoordinates(); // Coordinates
-        auto &s = m.getDirection();   // Direction
-
-        const auto &Ht = total_fields[idx];
-        double Hn = std::sqrt(Ht[0] * Ht[0] + Ht[1] * Ht[1] + Ht[2] * Ht[2]);
-
-        std::ostringstream ss;
-        ss.setf(std::ios::fixed, std::ios::floatfield);
-
-        ss << ' ' << std::setw(idW) << idx << " |" << std::setw(4) << mat << " |" << std::setw(10)
-           << std::setprecision(4) << c[0] * 1e10 << " " << std::setw(10) << c[1] * 1e10 << " "
-           << std::setw(10) << c[2] * 1e10 << " |" << std::setw(10) << std::showpos << std::setprecision(5)
-           << s[0] << std::setw(10) << s[1] << " " << std::setw(10) << s[2] << " " << " |" << std::setw(15)
-           << std::scientific << std::setprecision(5) << Hn << std::setw(15) << Ht[0] << " " << std::setw(15)
-           << Ht[1] << " " << std::setw(15) << Ht[2];
-
-        for (const auto &[reg, vec] : interaction_fields) {
-            const auto &F = vec[idx];
-            double Fn = std::sqrt(F[0] * F[0] + F[1] * F[1] + F[2] * F[2]);
-            ss << " |" << std::setw(15) << Fn << " " << std::setw(15) << F[0] << " " << std::setw(15) << F[1]
-               << " " << std::setw(15) << F[2];
-        }
-        for (const auto &[reg, evec] : interaction_energies) {
-            ss << " |" << std::setw(15) << evec[idx];
-        }
-
-        return ss.str();
-    }
-
-    std::string shot_macrocell_line(size_t idx) {
-        const size_t nMacrocells = geometry->getMacrocells().size();
-        const size_t idW = std::max<size_t>(std::to_string(nMacrocells - 1).length(), 2);
-
-        auto cell = geometry->getMacrocells()[idx];
-        auto &m = *cell.avg_moment; // non-const Moment
-        int mat = m.getMaterial().getNumber();
-
-        auto &c = m.getCoordinates();
-        auto &s = m.getDirection();
-
-        std::ostringstream ss;
-        ss.setf(std::ios::fixed, std::ios::floatfield);
-
-        ss << ' ' << std::setw(idW) << idx << " |" << std::setw(4) << mat << " |" << std::setw(10)
-           << std::setprecision(4) << c[0] * 1e10 << " " << std::setw(10) << c[1] * 1e10 << " "
-           << std::setw(10) << c[2] * 1e10 << " |" << std::setw(10) << std::showpos << std::setprecision(5)
-           << s[0] << std::setw(10) << s[1] << " " << std::setw(10) << s[2] << " ";
-
-        return ss.str();
-    }
+    // Конструктор
+    SimulationStepData(
+        double time,
+        uint step,
+        std::unique_ptr<IGeometry<CoordSystem>> geometry,
+        SolverData<CoordSystem> solver_data
+    )
+        : SolverData<CoordSystem>(solver_data), time(time), step(step), geometry(std::move(geometry)) {};
 };
 
 namespace cartesian {
 
-using SimulationStepData = SimulationStepData<NamespaceCoordSystem>;
+using AbstractSimulationStepData = SimulationStepData<NamespaceCoordSystem>;
 
 };
 
@@ -153,14 +94,8 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     // регистр, хранящий используемые рассчитываемые величины (взаимодействия между моментами)
     std::shared_ptr<InteractionRegistry<CoordSystem>> _interaction_registry;
 
-    // буфер эффективных полей на каждый элемент геометрии (поиндексная связка)
-    EffectiveFieldVector _effective_fields;
-    // буфер энергий взаимодействий на каждый элемент геометрии (поиндексная связка)
-    std::vector<double> _energies;
-    // STEP BUFFER <INTERACTION REGISTRY NUMBER, FIELD MASSIVE>
-    std::unordered_map<regnum, EffectiveFieldVector> _interaction_effective_fields;
-    // STEP BUFFER <INTERACTION REGISTRY NUMBER, ENERGY MASSIVE>
-    std::unordered_map<regnum, std::vector<double>> _interaction_enegries;
+    // текущий шаг (буфер)
+    SolverData<CoordSystem> _step_solver_data;
 
     // сохранёненые шаги (снимки)
     std::vector<SimulationStepData<CoordSystem>> steps;
@@ -183,29 +118,6 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     // была ли предпоготовка для обсчёта вкладов взаимодействий
     bool _system_prepared = false;
 
-    void correctBuffers(size_t moments_size) {
-        // корректировка размера буфера (если изменилась геометрия!)
-        if (this->_effective_fields.size() != moments_size) {
-            this->_effective_fields.resize(moments_size, EffectiveField::Zero());
-
-            for (auto &[interaction_regnum, interaction] : *_interaction_registry) {
-                this->_interaction_effective_fields[interaction_regnum].resize(
-                    moments_size, EffectiveField::Zero()
-                );
-            }
-        }
-    }
-
-    void clearBuffers(size_t moments_size) {
-        this->_effective_fields = EffectiveFieldVector(moments_size, EffectiveField::Zero());
-        this->_energies = std::vector<double>(moments_size, 0.0);
-        for (auto &[interaction_regnum, interaction] : *_interaction_registry) {
-            this->_interaction_effective_fields[interaction_regnum] =
-                EffectiveFieldVector(moments_size, EffectiveField::Zero());
-            this->_interaction_enegries[interaction_regnum] = std::vector<double>(moments_size, 0.0);
-        }
-    };
-
     void makeEmptyStep() {
         size_t moments_size = this->_geometry->size();
         for (auto &[_, interaction] : *_interaction_registry) {
@@ -215,66 +127,21 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
     }
 
+    void print(std::string msg) {
+        if (this->outstream) {
+            *this->outstream << msg << std::endl;
+        }
+    };
+
     void prepareGeometry() { this->_geometry->prepareData(); }
 
     void prepareSystem() {
-        if (this->outstream) {
-            *this->outstream << "Preparing geometry ..." << std::endl;
-        }
+        this->print("Preparing geometry ...");
         this->prepareGeometry();
-        if (this->outstream) {
-            *this->outstream << "preparing interactions ..." << std::endl;
-        }
+        this->print("preparing interactions ...");
         this->makeEmptyStep();
         this->_system_prepared = true;
-        if (this->outstream) {
-            *this->outstream << "!!! System has been prepared" << std::endl;
-        }
-    }
-
-    void calculateFieldContribution(
-        size_t moments_size, regnum interaction_regnum, IInteraction<CoordSystem> *interaction
-    ) {
-        EffectiveFieldVector contribution_vector(moments_size); // Вектор для вклада текущего interaction
-        std::vector<double> energy(moments_size); // Вектор для вклада текущего interaction
-        // clang-format off
-        #pragma omp parallel for schedule(dynamic)
-        // clang-format on
-        for (size_t i = 0; i < moments_size; ++i) {
-            contribution_vector[i] =
-                interaction->calculateFieldContribution(i, *this->_geometry, *this->_material_registry);
-            energy[i] = interaction->calculateEnergy((*this->_geometry)[i], contribution_vector[i]);
-        }
-
-        for (size_t i = 0; i < moments_size; ++i) {
-            if (contribution_vector[i].hasNaN()) {
-                throw std::runtime_error("Invalid contribution_vector data (NaN detected)");
-            }
-        }
-
-        // clang-format off
-        #pragma omp critical
-        // clang-format on
-        for (size_t i = 0; i < moments_size; ++i) {
-            this->_effective_fields[i] += contribution_vector[i];
-            this->_interaction_effective_fields[interaction_regnum][i] = contribution_vector[i];
-            // и энергии
-            this->_energies[i] += energy[i];
-            this->_interaction_enegries[interaction_regnum][i] = energy[i];
-        }
-    }
-
-    void calculateEffectiveFields() {
-        size_t moments_size = this->_geometry->size();
-        // если изменилась геометрия
-        this->correctBuffers(moments_size);
-        // подготовка (чистка буфферов)
-        this->clearBuffers(moments_size);
-
-        // обсчёт полей от зарегистрированных взаимодействий
-        for (auto &[interaction_regnum, interaction] : *_interaction_registry) {
-            this->calculateFieldContribution(moments_size, interaction_regnum, interaction.get());
-        }
+        this->print("!!! System has been prepared");
     }
 
     void saveStep() {
@@ -282,12 +149,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
             *this->outstream << "Saving step (" << this->_step << ", " << this->_current_time << ") ...";
         }
         this->steps.push_back(SimulationStepData<CoordSystem>(
-            this->_current_time,
-            this->_step,
-            this->_geometry->clone(),
-            this->_effective_fields,
-            this->_interaction_effective_fields,
-            this->_interaction_enegries
+            this->_current_time, this->_step, this->_geometry->clone(), this->_step_solver_data
         ));
         std::chrono::system_clock::time_point current_time = std::chrono::system_clock::now();
         if (this->outstream) {
@@ -335,8 +197,9 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         if (!out_stream)
             throw std::invalid_argument("Output stream cannot be null");
 
+        this->_step_solver_data = SolverData<CoordSystem>();
         // Инициализируем буфер эффективных полей нужного размера
-        this->_effective_fields.resize(geometry->size(), EffectiveField::Zero());
+        this->_step_solver_data.correct(this->_geometry->size(), *this->_interaction_registry);
         this->_step = 0; // нулевой шаг - начальная конфигурация
         this->_previous_saved_step_time = std::chrono::system_clock::now();
         // сохранить начальную конфигурацию
@@ -354,8 +217,9 @@ template <CoordSystemConcept CoordSystem> class Simulation {
                 this->_geometry->updateMacrocells();
             }
             this->_current_time += this->_dt;
-            this->calculateEffectiveFields();
-            this->_solver->updateMoments(*this->_geometry, this->_effective_fields, this->_dt);
+            this->_step_solver_data = this->_solver->updateMoments(
+                *this->_geometry, *this->_interaction_registry, *this->_material_registry, this->_dt
+            );
             if (save_step) {
                 this->saveStep();
             }
@@ -375,6 +239,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
     std::vector<SimulationStepData<CoordSystem>> &getSteps() { return this->steps; }
     void clearSteps() { return this->steps.clear(); }
+    // TODO pop_back last step чтобы не хранить все...
 };
 
 namespace cartesian {
@@ -397,24 +262,20 @@ inline void pyBindSimulation(py::module_ &module) {
     py::module_ cartesian = simulation_module.def_submodule("cartesian");
 
     using cartesian::AbstractGeometry;
+    using cartesian::AbstractInteractionRegistry;
+    using cartesian::AbstractSimulationStepData;
     using cartesian::AbstractSolver;
-    using cartesian::InteractionRegistry;
+    using cartesian::AbstractSolverData;
     using cartesian::Simulation;
-    using cartesian::SimulationStepData;
 
-    py::class_<SimulationStepData>(cartesian, "SimulationStepData")
-        .def_readonly("time", &SimulationStepData::time)
-        .def_readonly("step", &SimulationStepData::step)
+    py::class_<AbstractSimulationStepData, AbstractSolverData>(cartesian, "SimulationStepData")
+        .def_readonly("time", &AbstractSimulationStepData::time)
+        .def_readonly("step", &AbstractSimulationStepData::step)
         .def_property_readonly(
             "geometry",
-            [](const SimulationStepData &self) { return self.geometry.get(); },
+            [](const AbstractSimulationStepData &self) { return self.geometry.get(); },
             py::return_value_policy::reference_internal
         )
-        .def_readonly("total_fields", &SimulationStepData::total_fields)
-        .def_readonly("interaction_fields", &SimulationStepData::interaction_fields)
-        .def_readonly("interaction_energies", &SimulationStepData::interaction_energies)
-        .def("shot_line", &SimulationStepData::shot_line, py::arg("index"))
-        .def("shot_macrocell_line", &SimulationStepData::shot_macrocell_line, py::arg("macrocell_index"))
         .doc() = "Data structure holding simulation step information";
 
     py::class_<Simulation>(cartesian, "Simulation")
@@ -423,7 +284,7 @@ inline void pyBindSimulation(py::module_ &module) {
                 std::shared_ptr<AbstractGeometry>,
                 std::shared_ptr<AbstractSolver>,
                 std::shared_ptr<MaterialRegistry>,
-                std::shared_ptr<InteractionRegistry>,
+                std::shared_ptr<AbstractInteractionRegistry>,
                 double>(),
             py::arg("geometry"),
             py::arg("solver"),

@@ -32,6 +32,9 @@ typedef short regnum;
 // Определим тип для эффективного поля
 using EffectiveField = Eigen::Vector3d;
 
+// Вектор эффективных полей
+using EffectiveFieldVector = std::vector<EffectiveField>;
+
 // Базовый класс для анизотропии (НЕ понятно: как делить анизотропию по CoordSystem?)
 class Anisotropy {
   protected:
@@ -45,7 +48,7 @@ class Anisotropy {
 class UniaxialAnisotropy : public Anisotropy {
   public:
     Eigen::Vector3d axis; // Ось анизотропии (нормализованная)
-    double constant;      // Константа анизотропии K (Дж/м³)
+    double constant;      // Константа анизотропии, приведённая на атом
 
     UniaxialAnisotropy(const Eigen::Vector3d &axis, double constant)
         : axis(axis.normalized()), constant(constant) {}

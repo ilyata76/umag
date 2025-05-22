@@ -720,7 +720,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
             py::doc("средний момент всей макроячейки")                                                       \
         )
 
-#define ABSTRACTMACROCELLMANAGER_TEMPLATE_BINDINGS(cls)                                                      \
+#define MACROCELLMANAGER_TEMPLATE_BINDINGS(cls)                                                              \
     .def("get_macrocells", &cls::getMacrocells, py::doc("получить конейтнер макроячеек"))                    \
         .def(                                                                                                \
             "get_macrocell_index_by_spin",                                                                   \
@@ -740,7 +740,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         )                                                                                                    \
         .def("clear_macrocells", &cls::clearMacrocells, py::doc("обнулить набор макроячеек"))
 
-#define ABSTRACTGEOMETRY_TEMPLATE_BINDINGS(cls)                                                              \
+#define GEOMETRY_TEMPLATE_BINDINGS(cls)                                                                      \
     .def("__str__", &cls::__str__, py::doc("строковое представление для принтинга"))                         \
         .def("__len__", &cls::size, py::doc("размер геометрии в количестве моментов"))                       \
         .def(                                                                                                \
@@ -811,7 +811,7 @@ inline void pyBindGeometries(py::module_ &module) {
 
     py::class_<AbstractMacrocellManager, std::shared_ptr<AbstractMacrocellManager>>(
         cartesian, "AbstractMacrocellManager"
-    ) ABSTRACTMACROCELLMANAGER_TEMPLATE_BINDINGS(AbstractMacrocellManager)
+    ) MACROCELLMANAGER_TEMPLATE_BINDINGS(AbstractMacrocellManager)
         .doc() =
         "Базовый интерфейс управлятора макроячеек.\n"
         "  Предоставляет интерфейс для работы с макроячейками в выбранной (декартовой) системе координат,\n"
@@ -819,7 +819,7 @@ inline void pyBindGeometries(py::module_ &module) {
 
     py::class_<AbstractGeometry, AbstractMacrocellManager, std::shared_ptr<AbstractGeometry>>(
         cartesian, "AbstractGeometry"
-    ) ABSTRACTGEOMETRY_TEMPLATE_BINDINGS(AbstractGeometry)
+    ) GEOMETRY_TEMPLATE_BINDINGS(AbstractGeometry)
         .doc() =
         "Базовый интерфейс геометрии.\n"
         "  Предоставляет интерфейс для работы с геометрией в выбранной (декартовой) системе координат,\n"

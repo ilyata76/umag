@@ -6,6 +6,7 @@
 #include "constants.hpp"
 #include "geometries.hpp"
 #include "interactions.hpp"
+#include "printer.hpp"
 #include "registries.hpp"
 #include "simulation.hpp"
 #include "solvers.hpp"
@@ -23,4 +24,5 @@ PYBIND11_MODULE(core, module) {
     pyBindInteractions(module);
     pyBindSolvers(module);
     pyBindSimulation(module);
+    pyBindPrinter(module);
 };

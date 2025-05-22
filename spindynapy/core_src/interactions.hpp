@@ -390,9 +390,8 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
                                constants::BOHR_MAGNETON;
 
             // TODO с VAMPIRE не сходится, почему?
-            auto self_term =
-                (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) * 
-                (moment_term / pow(geometry.getMacrocellSize(), 3));
+            auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
+                             (moment_term / pow(geometry.getMacrocellSize(), 3));
 
             return this->calculate(current_moment, current_material, calculation_moments) + self_term;
         }
@@ -418,7 +417,7 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
  * Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,
  *    которые необходимо учитывать при расчёте эффективного поля на моменте.
  */
-using InteractionRegistry = PYTHON_API InteractionRegistry<NamespaceCoordSystem>;
+using AbstractInteractionRegistry = PYTHON_API InteractionRegistry<NamespaceCoordSystem>;
 
 }; // namespace PYTHON_API cartesian
 
@@ -474,98 +473,105 @@ inline void pyBindInteractions(py::module_ &module) {
         "  Предоставляют интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.\n"
         "\n"
         "Взаимодействия могут быть с внешнием полем, между моментами и т.д.";
-    ;
 
-    using cartesian::AbstractInteraction;
-    using cartesian::AnisotropyInteraction;
-    using cartesian::DemagnetizationInteraction;
-    using cartesian::DipoleDipoleInteraction;
-    using cartesian::ExchangeInteraction;
-    using cartesian::ExternalInteraction;
-    using cartesian::InteractionRegistry;
+    { // TODO везде такую "защиту" расставить
+        using cartesian::AbstractInteraction;
+        using cartesian::AbstractInteractionRegistry;
+        using cartesian::AnisotropyInteraction;
+        using cartesian::DemagnetizationInteraction;
+        using cartesian::DipoleDipoleInteraction;
+        using cartesian::ExchangeInteraction;
+        using cartesian::ExternalInteraction;
 
-    py::class_<AbstractInteraction, std::shared_ptr<AbstractInteraction>>(cartesian, "AbstractInteraction")
-        INTERACTION_TEMPLATE_BINDINGS(AbstractInteraction)
+        py::class_<AbstractInteraction, std::shared_ptr<AbstractInteraction>>(
+            cartesian, "AbstractInteraction"
+        ) INTERACTION_TEMPLATE_BINDINGS(AbstractInteraction)
             .doc() =
-        "Базовый интерфейс взаимодействий в выбранной (декартовой) системе координат.\n"
-        "\n"
-        "Абстрагирует взаимодействие между моментами в геометрии.\n"
-        "  Предоставляет интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.";
+            "Базовый интерфейс взаимодействий в выбранной (декартовой) системе координат.\n"
+            "\n"
+            "Абстрагирует взаимодействие между моментами в геометрии.\n"
+            "  Предоставляет интерфейс для расчёта эффективного поля на моменте и энергии взаимодействия.";
 
-    py::class_<ExchangeInteraction, AbstractInteraction, std::shared_ptr<ExchangeInteraction>>(
-        cartesian, "ExchangeInteraction"
-    )
-        .def(py::init<double>(), py::arg("cutoff_radius"))
-        .doc() = "Обменное взаимодействие между моментами.\n"
-                 "\n"
-                 "Выбранная стратегия - радиус обрезки: считаются все соседи в радиусе обрезки.\n"
-                 "  Модель Гейзенберга.";
+        py::class_<ExchangeInteraction, AbstractInteraction, std::shared_ptr<ExchangeInteraction>>(
+            cartesian, "ExchangeInteraction"
+        )
+            .def(py::init<double>(), py::arg("cutoff_radius"))
+            .doc() = "Обменное взаимодействие между моментами.\n"
+                     "\n"
+                     "Выбранная стратегия - радиус обрезки: считаются все соседи в радиусе обрезки.\n"
+                     "  Модель Гейзенберга.";
 
-    py::class_<ExternalInteraction, AbstractInteraction, std::shared_ptr<ExternalInteraction>>(
-        cartesian, "ExternalInteraction"
-    )
-        .def(py::init<const Eigen::Vector3d &>(), py::arg("external_field"))
-        .def(py::init<double, double, double>(), py::arg("sx"), py::arg("sy"), py::arg("sz"))
-        .doc() = "Взаимодействие с внешним полем.\n"
-                 "\n"
-                 "Выбранная стратегия: просто поле в Тл";
+        py::class_<ExternalInteraction, AbstractInteraction, std::shared_ptr<ExternalInteraction>>(
+            cartesian, "ExternalInteraction"
+        )
+            .def(py::init<const Eigen::Vector3d &>(), py::arg("external_field"))
+            .def(py::init<double, double, double>(), py::arg("sx"), py::arg("sy"), py::arg("sz"))
+            .doc() = "Взаимодействие с внешним полем.\n"
+                     "\n"
+                     "Выбранная стратегия: просто поле в Тл";
 
-    py::class_<AnisotropyInteraction, AbstractInteraction, std::shared_ptr<AnisotropyInteraction>>(
-        cartesian, "AnisotropyInteraction"
-    )
-        .def(py::init())
-        .doc() = "Воздействие на моменты в силу магнитной анизотропии.\n"
-                 "\n"
-                 "Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)\n"
-                 "  рассчитывается вклад в эффективное поле на моменте.";
+        py::class_<AnisotropyInteraction, AbstractInteraction, std::shared_ptr<AnisotropyInteraction>>(
+            cartesian, "AnisotropyInteraction"
+        )
+            .def(py::init())
+            .doc() =
+            "Воздействие на моменты в силу магнитной анизотропии.\n"
+            "\n"
+            "Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)\n"
+            "  рассчитывается вклад в эффективное поле на моменте.";
 
-    py::class_<DipoleDipoleInteraction, AbstractInteraction, std::shared_ptr<DipoleDipoleInteraction>>(
-        cartesian, "DipoleDipoleInteraction"
-    )
-        .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
-        .doc() = "Магнитостатическое взаимодействие между моментами.\n"
-                 "\n"
-                 "В зависимости от выбранной стратегии (cutoff или macrocells)\n"
-                 "  рассчитывается вклад в эффективное поле на моменте.\n"
-                 "\n"
-                 "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
-                 "величинам.\n"
-                 "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.";
+        py::class_<DipoleDipoleInteraction, AbstractInteraction, std::shared_ptr<DipoleDipoleInteraction>>(
+            cartesian, "DipoleDipoleInteraction"
+        )
+            .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
+            .doc() =
+            "Магнитостатическое взаимодействие между моментами.\n"
+            "\n"
+            "В зависимости от выбранной стратегии (cutoff или macrocells)\n"
+            "  рассчитывается вклад в эффективное поле на моменте.\n"
+            "\n"
+            "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
+            "величинам.\n"
+            "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.";
 
-    py::class_<
-        DemagnetizationInteraction,
-        DipoleDipoleInteraction,
-        std::shared_ptr<DemagnetizationInteraction>>(cartesian, "DemagnetizationInteraction")
-        .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
-        .doc() =
-        ("Считается, что взаимодействие между моментами в макроячейках\n"
-         "  обосновывает т.н. энергию демагнетизации.\n"
-         "\n"
-         "Текущее взаимодействие - это диполь-дипольное взаимодействие между моментами в макроячейках,\n"
-         "   с учётом демагнетизирующего характера.\n"
-         "\n"
-         "В зависимости от выбранной стратегии (cutoff или macrocells) рассчитывается вклад в эффективное "
-         "поле на моменте.\n"
-         "\n"
-         "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
-         "величинам.\n"
-         "         Для макроячеек предусмотрен т.н. self-term, который считается через кубический фактор "
-         "размагничивания.\n"
-         "          (см. VAMPIRE)\n"
-         "\n"
-         "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.");
+        py::class_<
+            DemagnetizationInteraction,
+            DipoleDipoleInteraction,
+            std::shared_ptr<DemagnetizationInteraction>>(cartesian, "DemagnetizationInteraction")
+            .def(py::init<double, std::string>(), py::arg("cutoff_radius"), py::arg("strategy") = "cutoff")
+            .doc() =
+            ("Считается, что взаимодействие между моментами в макроячейках\n"
+             "  обосновывает т.н. энергию демагнетизации.\n"
+             "\n"
+             "Текущее взаимодействие - это диполь-дипольное взаимодействие между моментами в макроячейках,\n"
+             "   с учётом демагнетизирующего характера.\n"
+             "\n"
+             "В зависимости от выбранной стратегии (cutoff или macrocells) рассчитывается вклад в "
+             "эффективное "
+             "поле на моменте.\n"
+             "\n"
+             "1. Макроячейки - это группы моментов, которые считаются как единое целое с усреднением по "
+             "величинам.\n"
+             "         Для макроячеек предусмотрен т.н. self-term, который считается через кубический фактор "
+             "размагничивания.\n"
+             "          (см. VAMPIRE)\n"
+             "\n"
+             "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.");
 
-    py::class_<InteractionRegistry, std::shared_ptr<InteractionRegistry>>(cartesian, "InteractionRegistry")
-        .def(py::init<>())
-        .def(py::init<RegistryContainer<AbstractInteraction>>(), py::arg("container"))
-            REGISTRY_TEMPLATE_BINDINGS(InteractionRegistry)
-        .doc() =
-        "Регистр взаимодействий (см. registires.hpp).\n"
-        "  Позволяет хранить и управлять различными взаимодействиями в системе.\n"
-        "\n"
-        "Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,\n"
-        "   которые необходимо учитывать при расчёте эффективного поля на моменте.\n"
-        "БЕЗ ЗАПИСИ => ПОТОКОБЕЗОПАСНЫЙ";
+        py::class_<AbstractInteractionRegistry, std::shared_ptr<AbstractInteractionRegistry>>(
+            cartesian, "InteractionRegistry"
+        )
+            .def(py::init<>())
+            .def(py::init<RegistryContainer<AbstractInteraction>>(), py::arg("container"))
+                REGISTRY_TEMPLATE_BINDINGS(AbstractInteractionRegistry)
+            .doc() =
+            "Регистр взаимодействий (см. registires.hpp).\n"
+            "  Позволяет хранить и управлять различными взаимодействиями в системе.\n"
+            "\n"
+            "Основной цикл симуляции может использовать этот регистр для получения всех взаимодействий,\n"
+            "   которые необходимо учитывать при расчёте эффективного поля на моменте.\n"
+            "БЕЗ ЗАПИСИ => ПОТОКОБЕЗОПАСНЫЙ";
+    }
 }
 
 #endif // ! __INTERACTIONS_HPP__
