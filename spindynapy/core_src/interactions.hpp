@@ -93,7 +93,7 @@ using AbstractInteraction = PYTHON_API IInteraction<NamespaceCoordSystem>;
  */
 class PYTHON_API ExchangeInteraction : public AbstractInteraction {
   protected:
-    // раидус обрезки соседей (внутри которого будем считать)
+    // радиус обрезки соседей (внутри которого будем считать)
     double _cutoff_radius;
 
   public:
@@ -389,7 +389,6 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
                                macrocell_moment->getMaterial().atomic_magnetic_saturation_magnetization *
                                constants::BOHR_MAGNETON;
 
-            // TODO с VAMPIRE не сходится, почему?
             auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
                              (moment_term / pow(geometry.getMacrocellSize(), 3));
 

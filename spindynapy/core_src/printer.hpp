@@ -92,7 +92,7 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
     // почти полный дамп состояния на шаге step_data
     PYTHON_API virtual std::string shot(
         AbstractSimulationStepData &step_data,
-        MaterialRegistry &material_registry,
+        MaterialRegistry &,
         AbstractInteractionRegistry &interaction_registry
     ) const override {
         std::stringstream ss;

@@ -57,13 +57,13 @@ class InteractionEnum(Enum):
 path_dir = "./temp/__COBALT_10x10__DIRECT___"
 makedirs(path_dir, exist_ok=True)
 
-numpy_geometry = NumpyGeometryManager.load_geometry(f"{path_dir}/../atoms_spins")
+numpy_geometry = None and NumpyGeometryManager.load_geometry(f"{path_dir}/../atoms_spins")
 if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
     numpy_geometry = NumpyGeometryManager.generate_hcp_monomaterial_parallelepiped(
         lattice_constant=LatticeConstant(nano(0.2507), nano(0.408)),
         size=XYZ(nano(10), nano(10), nano(0.1)),  # монослой
         material_number=mat_lib["Co"].get_number(),
-        initial_direction=None,
+        initial_direction=XYZ(-1, 0, 0),
         base_shift=None,
     )
     NumpyGeometryManager.save_geometry(f"{path_dir}/INITIAL", numpy_geometry)
@@ -77,13 +77,13 @@ material_registry = MaterialRegistry({MaterialEnum.COBALT.value: mat_lib["Co"]})
 
 geometry = Geometry(numpy_geometry, material_registry, macrocell_size=nano(1.01))  # type:ignore
 
-solver = LLGSolver(strategy=SolverStrategy.HEUN)
+solver = LLGSolver(strategy=SolverStrategy.EULER)
 
 interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.3)),
-        InteractionEnum.DEMAGNETIZATION.value: DipoleDipoleInteraction(
-            cutoff_radius=nano(10), strategy="cutoff"
+        InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
+            cutoff_radius=nano(20), strategy="macrocells"
         ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),

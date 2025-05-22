@@ -17,6 +17,7 @@
 #include <format>
 #include <memory>
 #include <object.h>
+#include <ostream>
 #include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
 #include <sstream>
@@ -468,8 +469,8 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
             std::shared_ptr<Moment> moment = nullptr;
             std::shared_ptr<Material> material = nullptr;
 
-            // "общая" намагниченность насыщения (для определения веса)
-            double total_weight = 0.0;
+            // "общая" намагниченность насыщения (для определения магнитного веса макроячейки)
+            Eigen::Vector3d total_moment_vector(0, 0, 0);
 
             // обход по всем моментам в ячейке
             for (size_t spin_idx : cell.moment_indices) {
@@ -478,7 +479,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 avg_direction_vector += moment->getDirection().asVector();
                 if ((material = moment->getMaterialSharedPtr())) {
                     material_counts[material]++;
-                    total_weight += material->atomic_magnetic_saturation_magnetization;
+                    total_moment_vector += moment->getDirection().asVector() * material->atomic_magnetic_saturation_magnetization;
                 }
             }
 
@@ -496,17 +497,11 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 }
             }
 
-            // мера организованности спинов (если все параллельные)
-            auto magnetic_organization_measue =
-                avg_direction_vector.norm(); // в интервале [0, 1], где 1 - полностью параллельные
-
             // наконец, обновляем момент в ячейке
             cell.avg_moment =
                 std::make_shared<Moment>(avg_coordinates_vector, avg_direction_vector, predominant_material);
-            // также определим "вес" для момента макроячейки (в простейшем случае = количество спинов в
-            // ячейке)
-            cell.avg_moment->amplitude = magnetic_organization_measue * total_weight /
-                                         predominant_material->atomic_magnetic_saturation_magnetization;
+            // общий вес намагниченности в диполь-дипольном взаимодействии
+            cell.avg_moment->amplitude = total_moment_vector.norm();
         }
     };
 
