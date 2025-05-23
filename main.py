@@ -77,14 +77,14 @@ material_registry = MaterialRegistry({MaterialEnum.COBALT.value: mat_lib["Co"]})
 
 geometry = Geometry(numpy_geometry, material_registry, macrocell_size=nano(1.01))  # type:ignore
 
-solver = LLGSolver(strategy=SolverStrategy.EULER)
+solver = LLGSolver(strategy=SolverStrategy.HEUN)
 
 interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.3)),
-        InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-            cutoff_radius=nano(20), strategy="macrocells"
-        ),
+        # InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
+        #     cutoff_radius=nano(20), strategy="cutoff"
+        # ),
         InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
     }
@@ -98,7 +98,7 @@ simulation = Simulation(
     dt=femto(1),
 )
 
-steps, save_every_step, update_macrocells_every_step = 10000, 100, 10
+steps, save_every_step, update_macrocells_every_step = 1000000, 1000, 10
 
 for i in range(steps):
     simulation.simulate_one_step(

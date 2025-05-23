@@ -144,6 +144,15 @@ template <typename Key, typename Values> class Cache {
         return this->_cache.at(key);
     }
 
+    // Получить значение по ключу
+    inline const Values &get(const Key &key, Values _default) const {
+        std::shared_lock lock(this->_mutex);
+        if (!this->has(key)) {
+            return _default;
+        }
+        return this->_cache.at(key);
+    }
+
     // Удалить элемент по ключу
     inline void erase(const Key &key) {
         std::unique_lock lock(this->_mutex);

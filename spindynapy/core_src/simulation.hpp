@@ -156,8 +156,8 @@ template <CoordSystemConcept CoordSystem> class Simulation {
             // clang-format off
             *this->outstream 
                 << " ...saved (с прошлого сохранённого шага прошло "
-                << std::chrono::duration_cast<std::chrono::seconds>(current_time - this->_previous_saved_step_time).count() + 1
-                << " секунд )" << std::endl;
+                << std::chrono::duration_cast<std::chrono::milliseconds>(current_time - this->_previous_saved_step_time).count()
+                << " милисекунд )" << std::endl;
             // clang-format on
         }
         this->_previous_saved_step_time = current_time;

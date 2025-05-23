@@ -244,6 +244,10 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
     PYTHON_API virtual std::string __str__() const override { return "AnisotropyInteraction()"; };
 };
 
+using DistanceNormCache = Cache<std::pair<size_t, size_t>, double>;
+using DistancePow3Cache = Cache<std::pair<size_t, size_t>, double>;
+using DistancePow5Cache = Cache<std::pair<size_t, size_t>, double>;
+
 /*
  * Магнитостатическое (диполь-дипольное) взаимодействие между моментами.
  *
@@ -259,6 +263,9 @@ class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
   protected:
     std::string _strategy;
     double _cutoff_radius;
+    DistanceNormCache distance_norm_cache;
+    DistancePow3Cache distance_pow3_cache;
+    DistancePow5Cache distance_pow5_cache;
 
     // посчитать энергию взаимодействия между моментом и другими, полученных по стратегии
     EffectiveField calculate(
