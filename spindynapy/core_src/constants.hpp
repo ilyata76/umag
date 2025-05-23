@@ -23,6 +23,7 @@ PYTHON_API constexpr auto REDUCED_PLANCK_CONSTANT = PLANCK_CONSTANT / 2 / NUMBER
 PYTHON_API constexpr auto FREE_SPIN_LANDE_FACTOR = 2;
 PYTHON_API constexpr auto FREE_SPIN_GYROMAGNETIC_RATIO =
     FREE_SPIN_LANDE_FACTOR * BOHR_MAGNETON / REDUCED_PLANCK_CONSTANT; // rad/(s*T) ~ 1.76e11
+PYTHON_API constexpr auto BOLTZMANN_CONSTANT = 1.380649e-23;          // Дж/К
 
 namespace PYTHON_API sci {
 
@@ -33,6 +34,7 @@ PYTHON_API constexpr auto h = PLANCK_CONSTANT;
 PYTHON_API constexpr auto h_rad = REDUCED_PLANCK_CONSTANT;
 PYTHON_API constexpr auto fe_lande = FREE_SPIN_LANDE_FACTOR;
 PYTHON_API constexpr auto fe_gamma = FREE_SPIN_GYROMAGNETIC_RATIO;
+PYTHON_API constexpr auto k_b = BOLTZMANN_CONSTANT;
 
 }; // namespace PYTHON_API sci
 
@@ -58,6 +60,7 @@ inline void pyBindConstants(py::module_ &module) {
     constants_module.attr("REDUCED_PLANCK_CONSTANT") = REDUCED_PLANCK_CONSTANT;
     constants_module.attr("FREE_SPIN_LANDE_FACTOR") = FREE_SPIN_LANDE_FACTOR;
     constants_module.attr("FREE_SPIN_GYROMAGNETIC_RATIO") = FREE_SPIN_GYROMAGNETIC_RATIO;
+    constants_module.attr("BOLTZMANN_CONSTANT") = BOLTZMANN_CONSTANT;
 
     constants_module.doc() =
         "Модуль, отвечающий за предоставление фундаментальных констант \n"
@@ -71,6 +74,7 @@ inline void pyBindConstants(py::module_ &module) {
     constants_module.attr("h_rad") = sci::h_rad;
     constants_module.attr("fe_lande") = sci::fe_lande;
     constants_module.attr("fe_gamma") = sci::fe_gamma;
+    constants_module.attr("k_b") = sci::k_b;
 }
 
 #endif // ! __CONSTANTS_HPP__

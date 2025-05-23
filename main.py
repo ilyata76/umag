@@ -37,6 +37,7 @@ from spindynapy.cartesian import (  # type: ignore # noqa
     DemagnetizationInteraction,
     DipoleDipoleInteraction,
     AnisotropyInteraction,
+    ThermalInteraction,
     Simulation,
     save_data,
     get_vvis_data,
@@ -52,6 +53,7 @@ class InteractionEnum(Enum):
     DEMAGNETIZATION = 1
     ANISOTROPY = 2
     EXTERNAL = 3
+    THERMAL = 4
 
 
 path_dir = "./temp/__COBALT_10x10__DIRECT___"
@@ -61,7 +63,7 @@ numpy_geometry = None and NumpyGeometryManager.load_geometry(f"{path_dir}/../ato
 if numpy_geometry is None or not numpy_geometry.any():  # type: ignore
     numpy_geometry = NumpyGeometryManager.generate_hcp_monomaterial_parallelepiped(
         lattice_constant=LatticeConstant(nano(0.2507), nano(0.408)),
-        size=XYZ(nano(10), nano(10), nano(0.1)),  # монослой
+        size=XYZ(nano(3), nano(3), nano(3)),
         material_number=mat_lib["Co"].get_number(),
         initial_direction=XYZ(-1, 0, 0),
         base_shift=None,
@@ -82,11 +84,14 @@ solver = LLGSolver(strategy=SolverStrategy.HEUN)
 interaction_registry = InteractionRegistry(
     {
         InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.3)),
-        # InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
-        #     cutoff_radius=nano(20), strategy="cutoff"
-        # ),
-        InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
+        InteractionEnum.DEMAGNETIZATION.value: DemagnetizationInteraction(
+            cutoff_radius=nano(20), strategy="macrocells"
+        ),
+        # InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
         # InteractionEnum.EXTERNAL.value: ExternalInteraction(0.5, 0.05, 0.0),
+        InteractionEnum.THERMAL.value: ThermalInteraction(
+            300, femto(1)
+        )
     }
 )
 
@@ -98,7 +103,7 @@ simulation = Simulation(
     dt=femto(1),
 )
 
-steps, save_every_step, update_macrocells_every_step = 1000000, 1000, 10
+steps, save_every_step, update_macrocells_every_step = 1000000, 100, 10
 
 for i in range(steps):
     simulation.simulate_one_step(

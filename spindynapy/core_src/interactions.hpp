@@ -18,6 +18,7 @@
 #include <format>
 #include <memory>
 #include <pybind11/pybind11.h>
+#include <random>
 #include <stdexcept>
 #include <string>
 
@@ -111,7 +112,7 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
                direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
-    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField
     calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
         const override {
@@ -169,7 +170,7 @@ class PYTHON_API ExternalInteraction : public AbstractInteraction {
         return -current_moment_norm * direction.dot(field);
     }
 
-    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField
     calculateFieldContribution(size_t, IGeometry<NamespaceCoordSystem> &, MaterialRegistry &) const override {
         return this->external_field;
@@ -214,7 +215,7 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
         return -current_moment_norm / 2 * direction.dot(field);
     }
 
-    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField
     calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
         const override {
@@ -318,7 +319,7 @@ class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
                direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
-    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField
     calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
         const override {
@@ -374,7 +375,7 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
     PYTHON_API DemagnetizationInteraction(double cutoff_radius, std::string strategy = "macrocells")
         : DipoleDipoleInteraction(cutoff_radius, strategy) {};
 
-    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField
     calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
         const override {
@@ -414,6 +415,72 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
             "DemagnetizationInteraction(cutoff_radius={}, strategy={})", this->_cutoff_radius, this->_strategy
         );
     };
+};
+
+/**
+ * ThermalInteraction ― стохастический вклад от тепловых флуктуаций.
+ *  B_th = sqrt( 2 α k_B T / (γ μ_s Δt) ) · ξ,  ξ ~ N(0,1)
+ *               "Create ThermalInteraction with temperature [K], time step [s], and optional seed (0 uses "
+ *              "random device)."
+ */
+class PYTHON_API ThermalInteraction final : public AbstractInteraction {
+  private:
+    double _temperature; // [K]
+    double _dt; // численный шаг [s]
+    mutable std::mt19937 _rng; // база для генерации случайных чисел
+    mutable std::normal_distribution<double> _norm {0.0, 1.0}; // гауссово распределение N(0,1)
+
+  public:
+    // конструктор
+    PYTHON_API ThermalInteraction(double temperature, double dt, uint32_t seed = 0)
+        : _temperature(temperature), _dt(dt) {
+        if (seed <= 0) {
+            _rng.seed(std::random_device {}());
+        } else {
+            _rng.seed(seed);
+        }
+    }
+
+    // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
+    PYTHON_API EffectiveField calculateFieldContribution(
+        size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry & /*unused*/
+    ) const override {
+        auto &moment = geometry[moment_index];
+        auto &material = moment.getMaterial();
+        // учтём, что amplitude может быть >1
+        const double mu_s = moment.amplitude *
+                            material.atomic_magnetic_saturation_magnetization *
+                            constants::BOHR_MAGNETON;
+
+        const double pref = std::sqrt( 2.0 * material.damping_constant *
+                                        constants::BOLTZMANN_CONSTANT * _temperature /
+                                        ( material.gyromagnetic_ratio * mu_s * _dt ) );
+
+        /* ---------- потокобезопасный RNG (по копии seed-а) ---------- */
+        thread_local std::mt19937 rng( _rng );            // каждый поток — свой
+        thread_local std::normal_distribution<double> norm{0.0, 1.0};
+        /* ------------------------------------------------------------ */
+
+        return { pref * norm(rng),
+                pref * norm(rng),
+                pref * norm(rng) };
+
+        // три независимых гауссовских значения
+        return EffectiveField {pref * _norm(_rng), pref * _norm(_rng), pref * _norm(_rng)};
+    }
+
+    // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
+    PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &, EffectiveField &) const override {
+        return 0.0; // Тепловое поле не имеет собственной энергии в макроскопическом выводе
+    }
+
+    // получить название взаимодействия
+    PYTHON_API std::string getName() const override { return "THERMAL"; }
+
+    // строковое представление для принтинга
+    PYTHON_API std::string __str__() const override {
+        return std::format("ThermalInteraction(T={} K, dt={} s)", _temperature, _dt);
+    }
 };
 
 /*
@@ -488,6 +555,7 @@ inline void pyBindInteractions(py::module_ &module) {
         using cartesian::DipoleDipoleInteraction;
         using cartesian::ExchangeInteraction;
         using cartesian::ExternalInteraction;
+        using cartesian::ThermalInteraction;
 
         py::class_<AbstractInteraction, std::shared_ptr<AbstractInteraction>>(
             cartesian, "AbstractInteraction"
@@ -563,6 +631,22 @@ inline void pyBindInteractions(py::module_ &module) {
              "          (см. VAMPIRE)\n"
              "\n"
              "2. cutoff - это радиус, в пределах которого считаются все соседи или соседние макроячейки.");
+
+        py::class_<ThermalInteraction, AbstractInteraction, std::shared_ptr<ThermalInteraction>>(
+            cartesian, "ThermalInteraction"
+        )
+            .def(
+                py::init<double, double, uint32_t>(),
+                py::arg("temperature"),
+                py::arg("dt"),
+                py::arg("seed") = 0
+            )
+            .doc() =
+            "Стохастический вклад от тепловых флуктуаций.\n"
+            "\n"
+            "B_th = sqrt( 2 α k_B T / (γ μ_s Δt) ) · ξ,  ξ ~ N(0,1)\n"
+            "  Create ThermalInteraction with temperature [K], time step [s], and optional seed (0 uses "
+            "random device).";
 
         py::class_<AbstractInteractionRegistry, std::shared_ptr<AbstractInteractionRegistry>>(
             cartesian, "InteractionRegistry"

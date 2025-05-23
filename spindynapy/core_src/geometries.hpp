@@ -479,7 +479,8 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 avg_direction_vector += moment->getDirection().asVector();
                 if ((material = moment->getMaterialSharedPtr())) {
                     material_counts[material]++;
-                    total_moment_vector += moment->getDirection().asVector() * material->atomic_magnetic_saturation_magnetization;
+                    total_moment_vector += moment->getDirection().asVector() *
+                                           material->atomic_magnetic_saturation_magnetization;
                 }
             }
 
