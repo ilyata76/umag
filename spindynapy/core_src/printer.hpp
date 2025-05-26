@@ -208,6 +208,7 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
 
             ss << "\nMACROCELLS:\n"
                << std::setw(w_id) << "id"  << " |"
+               << std::setw(w_coord) << "spins [N]" << " |"
                << std::setw(w_mat) << "mat" << " |"
                << std::setw(w_coord) << "x[A]" << std::setw(w_coord) << "y[A]" << std::setw(w_coord) << "z[A]" << " |"
                << std::setw(w_spin) << "sx"   << std::setw(w_spin)  << "sy"   << std::setw(w_spin)  << "sz" << " |";
@@ -222,6 +223,7 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
                 auto const  dir = m.getDirection().asVector();
 
                 ss << std::setw(w_id_mc) << j << " |"
+                   << std::setw(w_coord) << cell.moment_indices.size() << " |"
                    << std::setw(w_mat) << m.getMaterial().getNumber() << " |"
                    << std::fixed << std::setprecision(this->_coordinates_precision)
                    << std::setw(w_coord) << coord.x() * 1e10 << std::setw(w_coord) << coord.y() * 1e10 << std::setw(w_coord) << coord.z() * 1e10 << " |"

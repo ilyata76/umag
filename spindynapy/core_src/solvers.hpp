@@ -90,7 +90,9 @@ template <CoordSystemConcept CoordSystem> struct PYTHON_API SolverData {
     PYTHON_API void correct(size_t moments_size, InteractionRegistry<CoordSystem> &interaction_registry) {
         if (moments_size == this->effective_fields.size())
             return;
+        this->effective_fields.clear();
         this->effective_fields.resize(moments_size);
+        this->energies.clear();
         this->energies.resize(moments_size);
         this->interaction_effective_fields.clear();
         this->interaction_energies.clear();

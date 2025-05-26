@@ -385,22 +385,26 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
         if (this->_strategy == "cutoff") {
             auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
             auto calculation_moments = geometry.getFromIndexes(neighbor_indices);
-            return this->calculate(current_moment, current_material, calculation_moments);
+            auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
+                             (current_material.atomic_magnetic_saturation_magnetization *
+                              constants::BOHR_MAGNETON * current_moment.getDirection().asVector()) /
+                             geometry.getAtomCellVolume();
+            return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         } else if (this->_strategy == "macrocells") {
 
             auto calculation_moments = geometry.getMomentsFromMacrocells(moment_index, this->_cutoff_radius);
 
-            auto macrocell_moment =
-                geometry.getMacrocells()[geometry.getMacrocellIndexBySpin(moment_index)].avg_moment;
+            auto macrocell = geometry.getMacrocells()[geometry.getMacrocellIndexBySpin(moment_index)];
+            auto macrocell_moment = macrocell.avg_moment;
 
             auto moment_term = macrocell_moment->amplitude * macrocell_moment->getDirection().asVector() *
                                macrocell_moment->getMaterial().atomic_magnetic_saturation_magnetization *
                                constants::BOHR_MAGNETON;
 
             auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
-                             (moment_term / pow(geometry.getMacrocellSize(), 3));
+                             (moment_term / (macrocell.moment_indices.size() * geometry.getAtomCellVolume()));
 
-            return this->calculate(current_moment, current_material, calculation_moments) + self_term;
+            return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         }
         // Если не удалось найти подходящую стратегию
         throw std::invalid_argument("Invalid strategy string");
@@ -425,8 +429,8 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
  */
 class PYTHON_API ThermalInteraction final : public AbstractInteraction {
   private:
-    double _temperature; // [K]
-    double _dt; // численный шаг [s]
+    double _temperature;       // [K]
+    double _dt;                // численный шаг [s]
     mutable std::mt19937 _rng; // база для генерации случайных чисел
     mutable std::normal_distribution<double> _norm {0.0, 1.0}; // гауссово распределение N(0,1)
 
@@ -448,25 +452,20 @@ class PYTHON_API ThermalInteraction final : public AbstractInteraction {
         auto &moment = geometry[moment_index];
         auto &material = moment.getMaterial();
         // учтём, что amplitude может быть >1
-        const double mu_s = moment.amplitude *
-                            material.atomic_magnetic_saturation_magnetization *
-                            constants::BOHR_MAGNETON;
+        const double mu_s =
+            moment.amplitude * material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
 
-        const double pref = std::sqrt( 2.0 * material.damping_constant *
-                                        constants::BOLTZMANN_CONSTANT * _temperature /
-                                        ( material.gyromagnetic_ratio * mu_s * _dt ) );
+        const double pref = std::sqrt(
+            2.0 * material.damping_constant * constants::BOLTZMANN_CONSTANT * _temperature /
+            (material.gyromagnetic_ratio * mu_s * _dt)
+        );
 
         /* ---------- потокобезопасный RNG (по копии seed-а) ---------- */
-        thread_local std::mt19937 rng( _rng );            // каждый поток — свой
-        thread_local std::normal_distribution<double> norm{0.0, 1.0};
+        thread_local std::mt19937 rng(_rng); // каждый поток — свой
+        thread_local std::normal_distribution<double> norm {0.0, 1.0};
         /* ------------------------------------------------------------ */
 
-        return { pref * norm(rng),
-                pref * norm(rng),
-                pref * norm(rng) };
-
-        // три независимых гауссовских значения
-        return EffectiveField {pref * _norm(_rng), pref * _norm(_rng), pref * _norm(_rng)};
+        return {pref * norm(rng), pref * norm(rng), pref * norm(rng)};
     }
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем

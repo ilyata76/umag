@@ -199,6 +199,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
         this->_step_solver_data = SolverData<CoordSystem>();
         // Инициализируем буфер эффективных полей нужного размера
+        this->_step_solver_data.clear(this->_geometry->size(), *this->_interaction_registry);
         this->_step_solver_data.correct(this->_geometry->size(), *this->_interaction_registry);
         this->_step = 0; // нулевой шаг - начальная конфигурация
         this->_previous_saved_step_time = std::chrono::system_clock::now();

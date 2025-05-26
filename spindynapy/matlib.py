@@ -13,6 +13,7 @@ class MaterialEnum(Enum):
     """Перечисление для материалов (индекс для регистра)"""
 
     COBALT = 1
+    HYPOTHETIC = 100
 
 
 mat_lib: dict[str, Material] = {
@@ -23,6 +24,14 @@ mat_lib: dict[str, Material] = {
         damping_constant=0.5,
         gyromagnetic_ratio=constants.FREE_SPIN_GYROMAGNETIC_RATIO,
         anisotropy=UniaxialAnisotropy(np.array([0.0, 0.0, 1.0]), 6.69e-24),  # Дж/atom
+    ),
+    "Hypothetic": Material(
+        material_number=MaterialEnum.HYPOTHETIC.value,
+        exchange_constant_J=6e-21,  # Дж
+        atomic_magnetic_saturation_magnetization=1.0,  # в му_B
+        damping_constant=0.5,
+        gyromagnetic_ratio=constants.FREE_SPIN_GYROMAGNETIC_RATIO,
+        anisotropy=UniaxialAnisotropy(np.array([1.0, 1.0, 1.0]), 1e-24),  # Дж/atom
     )
 }
 """
