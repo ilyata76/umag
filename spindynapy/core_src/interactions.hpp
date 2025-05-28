@@ -461,11 +461,14 @@ class PYTHON_API ThermalInteraction final : public AbstractInteraction {
         );
 
         /* ---------- потокобезопасный RNG (по копии seed-а) ---------- */
-        thread_local std::mt19937 rng(_rng); // каждый поток — свой
-        thread_local std::normal_distribution<double> norm {0.0, 1.0};
+        thread_local static std::mt19937 local_rng(std::random_device{}()); // Каждый поток свой, инициализирован 1 раз
+        thread_local static std::normal_distribution<double> local_norm(0.0, 1.0);
         /* ------------------------------------------------------------ */
+        auto x = local_norm(local_rng);
+        auto y = local_norm(local_rng);
+        auto z = local_norm(local_rng);
 
-        return {pref * norm(rng), pref * norm(rng), pref * norm(rng)};
+        return {pref * x, pref * y, pref * z}; // Возвращаем эффективное поле
     }
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем

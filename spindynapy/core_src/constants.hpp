@@ -15,12 +15,12 @@ namespace py = pybind11;
 namespace PYTHON_API spindynapy {
 namespace PYTHON_API constants {
 
-PYTHON_API constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 1.256637061e-6; // Н/А^2 или Гн/м
-PYTHON_API constexpr auto NUMBER_PI = 3.14159;
+PYTHON_API constexpr auto NUMBER_PI = std::numbers::pi_v<double>;
+PYTHON_API constexpr auto VACUUM_MAGNETIC_PERMEABILITY = 4.0 * NUMBER_PI * 1.0e-7; // Н/А^2 или Гн/м
 PYTHON_API constexpr auto BOHR_MAGNETON = 9.2740100783e-24; // Дж/Тл (или А*м^2)
 PYTHON_API constexpr auto PLANCK_CONSTANT = 6.62607015e-34; // Дж/Гц
 PYTHON_API constexpr auto REDUCED_PLANCK_CONSTANT = PLANCK_CONSTANT / 2 / NUMBER_PI; // Дж * сек
-PYTHON_API constexpr auto FREE_SPIN_LANDE_FACTOR = 2;
+PYTHON_API constexpr auto FREE_SPIN_LANDE_FACTOR = 2.00231930436256;
 PYTHON_API constexpr auto FREE_SPIN_GYROMAGNETIC_RATIO =
     FREE_SPIN_LANDE_FACTOR * BOHR_MAGNETON / REDUCED_PLANCK_CONSTANT; // rad/(s*T) ~ 1.76e11
 PYTHON_API constexpr auto BOLTZMANN_CONSTANT = 1.380649e-23;          // Дж/К

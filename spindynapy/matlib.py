@@ -19,9 +19,9 @@ class MaterialEnum(Enum):
 mat_lib: dict[str, Material] = {
     "Co": Material(
         material_number=MaterialEnum.COBALT.value,
-        exchange_constant_J=6.064e-21,  # Дж
+        exchange_constant_J=5e-21,  # Дж
         atomic_magnetic_saturation_magnetization=1.72,  # в му_B
-        damping_constant=0.5,
+        damping_constant=0.01,
         gyromagnetic_ratio=constants.FREE_SPIN_GYROMAGNETIC_RATIO,
         anisotropy=UniaxialAnisotropy(np.array([0.0, 0.0, 1.0]), 6.69e-24),  # Дж/atom
     ),
