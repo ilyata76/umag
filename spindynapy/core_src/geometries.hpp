@@ -896,10 +896,8 @@ inline void pyBindGeometries(py::module_ &module) {
             &Geometry::unit_cell_size,
             py::doc("Объём (размер) элементарной ячейки в метрах")
         )
-        .def_readonly(
-            "atom_cell_size",
-            &Geometry::atom_cell_size,
-            py::doc("Объём атомной ячейки (доля элементарной)")
+        .def_readonly( // TODO это свойство материала!!!
+            "atom_cell_size", &Geometry::atom_cell_size, py::doc("Объём атомной ячейки (доля элементарной)")
         )
         .doc() =
         "Геометрия, реализуемая в декартовой системе координат.\n"

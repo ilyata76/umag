@@ -461,7 +461,7 @@ class PYTHON_API ThermalInteraction final : public AbstractInteraction {
         );
 
         /* ---------- потокобезопасный RNG (по копии seed-а) ---------- */
-        thread_local static std::mt19937 local_rng(std::random_device{}()); // Каждый поток свой, инициализирован 1 раз
+        thread_local static std::mt19937 local_rng(std::random_device {}()); // TODO переделать
         thread_local static std::normal_distribution<double> local_norm(0.0, 1.0);
         /* ------------------------------------------------------------ */
         auto x = local_norm(local_rng);

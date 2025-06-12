@@ -8,16 +8,14 @@
 
 #include "geometries.hpp"
 #include "interactions.hpp"
+#include "logger.hpp"
 #include "registries.hpp"
 #include "solvers.hpp"
 #include "types.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <ctime>
-#include <iostream>
 #include <memory>
-#include <ostream>
 #include <pybind11/chrono.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/eigen.h>
@@ -40,23 +38,6 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData : public Sol
     std::unique_ptr<IGeometry<CoordSystem>> geometry;
 
     SimulationStepData() {}; // TODO не забыть про nullptr и нулевые массивы...
-
-    // Конструктор
-    SimulationStepData(
-        double time,
-        uint step,
-        std::unique_ptr<IGeometry<CoordSystem>> geometry,
-        const EffectiveFieldVector &effective_fields,
-        std::vector<double> energies,
-        const std::unordered_map<regnum, EffectiveFieldVector> &interaction_effective_fields,
-        const std::unordered_map<regnum, std::vector<double>> &interaction_energies
-    )
-        : SolverData<CoordSystem>(
-              effective_fields, energies, interaction_effective_fields, interaction_energies
-          ),
-          time(time),
-          step(step),
-          geometry(std::move(geometry)) {};
 
     // Конструктор
     SimulationStepData(
@@ -103,12 +84,6 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     // счётчик шагов
     uint _step = 0;
 
-    // время предыдущего шага
-    std::chrono::system_clock::time_point _previous_saved_step_time;
-
-    // текущий поток вывода
-    std::ostream *outstream;
-
     // текущее время
     double _current_time = 0.0;
 
@@ -127,40 +102,21 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         }
     }
 
-    void print(std::string msg) {
-        if (this->outstream) {
-            *this->outstream << msg << std::endl;
-        }
-    };
-
     void prepareGeometry() { this->_geometry->prepareData(); }
 
     void prepareSystem() {
-        this->print("Preparing geometry ...");
+        LOG_MSG_PRINT("Preparing geometry...");
         this->prepareGeometry();
-        this->print("preparing interactions ...");
+        LOG_MSG_PRINT("preparing interactions ...");
         this->makeEmptyStep();
         this->_system_prepared = true;
-        this->print("!!! System has been prepared");
+        LOG_MSG_PRINT("!!! System has been prepared");
     }
 
     void saveStep() {
-        if (this->outstream) {
-            *this->outstream << "Saving step (" << this->_step << ", " << this->_current_time << ") ...";
-        }
         this->steps.push_back(SimulationStepData<CoordSystem>(
             this->_current_time, this->_step, this->_geometry->clone(), this->_step_solver_data
         ));
-        std::chrono::system_clock::time_point current_time = std::chrono::system_clock::now();
-        if (this->outstream) {
-            // clang-format off
-            *this->outstream 
-                << " ...saved (с прошлого сохранённого шага прошло "
-                << std::chrono::duration_cast<std::chrono::milliseconds>(current_time - this->_previous_saved_step_time).count()
-                << " милисекунд )" << std::endl;
-            // clang-format on
-        }
-        this->_previous_saved_step_time = current_time;
     }
 
   public:
@@ -174,15 +130,13 @@ template <CoordSystemConcept CoordSystem> class Simulation {
         std::shared_ptr<ISolver<CoordSystem>> solver,
         std::shared_ptr<MaterialRegistry> material_registry,
         std::shared_ptr<InteractionRegistry<CoordSystem>> interaction_registry,
-        double dt = 1e-13,
-        std::ostream *out_stream = &std::cout
+        double dt = 1e-13
     )
         : _geometry(geometry),
           _solver(solver),
           _material_registry(material_registry),
           _interaction_registry(interaction_registry),
-          _dt(dt),
-          outstream(out_stream) {
+          _dt(dt) {
         // проверки
         if (!_geometry)
             throw std::invalid_argument("Геометрия не может быть None");
@@ -194,15 +148,12 @@ template <CoordSystemConcept CoordSystem> class Simulation {
             throw std::invalid_argument("Регистр материалов не может быть None");
         if (_dt <= 0)
             throw std::invalid_argument("Time step dt must be positive.");
-        if (!out_stream)
-            throw std::invalid_argument("Output stream cannot be null");
 
         this->_step_solver_data = SolverData<CoordSystem>();
         // Инициализируем буфер эффективных полей нужного размера
         this->_step_solver_data.clear(this->_geometry->size(), *this->_interaction_registry);
         this->_step_solver_data.correct(this->_geometry->size(), *this->_interaction_registry);
         this->_step = 0; // нулевой шаг - начальная конфигурация
-        this->_previous_saved_step_time = std::chrono::system_clock::now();
         // сохранить начальную конфигурацию
         this->saveStep();
     };
@@ -210,8 +161,9 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     std::string __str__() const { return _geometry->__str__(); };
 
     void simulateOneStep(bool save_step = false, bool update_macrocells = true) {
+        this->_step += 1;
         try {
-            this->_step += 1;
+            SCOPED_LOG_TIMER_PRINT(" ============ | Simulation step " + std::to_string(this->_step));
             if (!this->_system_prepared)
                 this->prepareSystem();
             if (update_macrocells) {
@@ -225,9 +177,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
                 this->saveStep();
             }
         } catch (const std::exception &e) {
-            if (this->outstream) {
-                *this->outstream << "Error during simulation step: " << e.what() << std::endl;
-            }
+            LOG_MSG_PRINT("Error during simulation step: " + std::string(e.what()));
             throw e;
         }
     };
