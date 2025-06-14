@@ -74,12 +74,16 @@ class Material {
     std::shared_ptr<Anisotropy> anisotropy; // присущая материалу магнитная анизотропия
     double gyromagnetic_ratio; // гиромагнитное отношение
     double damping_constant;   // демпфирующая константа Гильберта
+    double unit_cell_size; // размер элементарной ячейки
+    double atom_cell_size; // размер ячейки с атомом (доля от элементарной ячейки)
 
     /** Гиромагнитное отношение зависит от эффективного фактора Ланде */
     Material(
         regnum material_number,
         double exchange_constant_J,
         double atomic_magnetic_saturation_magnetization,
+        double unit_cell_size,
+        double atom_cell_size,
         double gyromagnetic_ratio = constants::FREE_SPIN_GYROMAGNETIC_RATIO, // ~=~ Co Ni Fe
         double damping_constant = 0.1,
         std::shared_ptr<Anisotropy> anisotropy = nullptr
@@ -89,7 +93,9 @@ class Material {
           atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
           anisotropy(anisotropy),
           gyromagnetic_ratio(gyromagnetic_ratio),
-          damping_constant(damping_constant) {};
+          damping_constant(damping_constant),
+          unit_cell_size(unit_cell_size),
+          atom_cell_size(atom_cell_size) {};
 
     regnum getNumber() const { return this->material_number; };
     std::string __str__() const { return std::to_string(this->material_number); };
@@ -351,15 +357,27 @@ inline void pyBindTypes(py::module_ &module) {
 
     py::class_<Material, std::shared_ptr<Material>>(types_module, "Material") BIND_STR_REPR(Material)
         .def(
-            py::init<regnum, double, double, double, double, std::shared_ptr<Anisotropy>>(),
+            py::init<regnum, double, double, double, double, double, double, std::shared_ptr<Anisotropy>>(),
             py::arg("material_number"),
             py::arg("exchange_constant_J"),
             py::arg("atomic_magnetic_saturation_magnetization"),
+            py::arg("unit_cell_size"),
+            py::arg("atom_cell_size"),
             py::arg("gyromagnetic_ratio") = constants::FREE_SPIN_GYROMAGNETIC_RATIO,
             py::arg("damping_constant") = 0.1,
             py::arg("anisotropy").none(true) = pybind11::none()
         )
         .def("get_number", &Material::getNumber)
+        .def_readonly(
+            "unit_cell_size",
+            &Material::unit_cell_size,
+            py::doc("Объём (размер) элементарной ячейки в метрах")
+        )
+        .def_readonly( // TODO это свойство материала!!!
+            "atom_cell_size",
+            &Material::atom_cell_size,
+            py::doc("Объём атомной ячейки (доля элементарной)")
+        )
         .doc() = "(Интерфейс) Базовая единица абстракции - свойства материала.\n"
                  "Хранится в регистре, в остальных - в виде ссылки, добываемой из регистра.\n";
 

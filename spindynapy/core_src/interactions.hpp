@@ -388,7 +388,7 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
             auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
                              (current_material.atomic_magnetic_saturation_magnetization *
                               constants::BOHR_MAGNETON * current_moment.getDirection().asVector()) /
-                             geometry.getAtomCellVolume();
+                             current_material.atom_cell_size;
             return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         } else if (this->_strategy == "macrocells") {
 
@@ -401,8 +401,9 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
                                macrocell_moment->getMaterial().atomic_magnetic_saturation_magnetization *
                                constants::BOHR_MAGNETON;
 
-            auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
-                             (moment_term / (macrocell.moment_indices.size() * geometry.getAtomCellVolume()));
+            auto self_term =
+                (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
+                (moment_term / (macrocell.moment_indices.size() * current_material.atom_cell_size));
 
             return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         }

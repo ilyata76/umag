@@ -124,16 +124,16 @@ class PYTHON_API ScopedTimer {
 #define LOG_MSG(msg) ::spindynapy::Logger::instance().add(msg);
 
 // Отправить сообщение в логгер и сразу опубликовать
-#define LOG_MSG_PRINT(msg) \
-    ::spindynapy::Logger::instance().add(msg); \
+#define LOG_MSG_PRINT(msg)                                                                                   \
+    ::spindynapy::Logger::instance().add(msg);                                                               \
     ::spindynapy::Logger::instance().flush();
 
 // Определить таймер для логирования времени выполнения блока кода (деструктор посчитает время)
 #define SCOPED_LOG_TIMER(name) ::spindynapy::ScopedTimer timer(name, &Logger::instance());
 
 // Определить таймер и сразу печатать по его деструктуризации
-#define SCOPED_LOG_TIMER_PRINT(name) \
-    ::spindynapy::ScopedTimer timer(name, &Logger::instance()); \
+#define SCOPED_LOG_TIMER_PRINT(name)                                                                         \
+    ::spindynapy::ScopedTimer timer(name, &Logger::instance());                                              \
     ::spindynapy::Logger::instance().flush();
 
 } // namespace spindynapy

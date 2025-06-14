@@ -151,9 +151,6 @@ class PYTHON_API IGeometry : virtual public IMacrocellManager<CoordSystem> {
     // клонировать геометрию, создав новый объект (TODO заменить на конструктор копирования)
     virtual std::unique_ptr<IGeometry<CoordSystem>> clone() const = 0;
 
-    // получить размер атомной ячейки (доля элементарной)
-    virtual double getAtomCellVolume() const = 0;
-
     // ---- ИТЕРАТОР ----
     // итератор по моментам для обхода
     using iterator = MomentsContainer<CoordSystem>::iterator;
@@ -535,46 +532,21 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
     mutable std::shared_mutex _mutex;
 
   public:
-    double unit_cell_size; // размер элементарной ячейки
-    double atom_cell_size; // размер ячейки с атомом (доля от элементарной ячейки)
-
     // конструктор изнутри системы
-    PYTHON_API Geometry(
-        const MomentsContainer<NamespaceCoordSystem> &moments,
-        double unit_cell_size,
-        double atom_cell_size,
-        double macrocell_size = 1e-9
-    )
-        : MacrocellManager(nullptr, macrocell_size),
-          _moments(moments),
-          unit_cell_size(unit_cell_size),
-          atom_cell_size(atom_cell_size) {
+    PYTHON_API Geometry(const MomentsContainer<NamespaceCoordSystem> &moments, double macrocell_size = 1e-9)
+        : MacrocellManager(nullptr, macrocell_size), _moments(moments) {
         MacrocellManager::_moments = &this->_moments; // заполнить указатель на массив моментов
     };
     // конструктор изнутри системы для rvalue
-    PYTHON_API Geometry(
-        MomentsContainer<NamespaceCoordSystem> &&moments,
-        double unit_cell_size,
-        double atom_cell_size,
-        double macrocell_size = 1e-9
-    )
-        : MacrocellManager(nullptr, macrocell_size),
-          _moments(std::move(moments)),
-          unit_cell_size(unit_cell_size),
-          atom_cell_size(atom_cell_size) {
+    PYTHON_API Geometry(MomentsContainer<NamespaceCoordSystem> &&moments, double macrocell_size = 1e-9)
+        : MacrocellManager(nullptr, macrocell_size), _moments(std::move(moments)) {
         MacrocellManager::_moments = &this->_moments; // заполнить указатель на массив моментов
     };
     // главный конструктор: из numpy массива; принимает регистр для проверки материалов, размер макроячейки
     PYTHON_API Geometry(
-        const Eigen::MatrixXd &moments,
-        MaterialRegistry &material_registry,
-        double unit_cell_size,
-        double atom_cell_size,
-        double macrocell_size = 1e-9
+        const Eigen::MatrixXd &moments, MaterialRegistry &material_registry, double macrocell_size = 1e-9
     )
-        : MacrocellManager(nullptr, macrocell_size),
-          unit_cell_size(unit_cell_size),
-          atom_cell_size(atom_cell_size) {
+        : MacrocellManager(nullptr, macrocell_size) {
         //
         if (moments.cols() < 7) {
             throw std::invalid_argument("Expected 7 columns: [x, y, z, sx, sy, sz, material]");
@@ -625,9 +597,6 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         }
         return result;
     };
-
-    // получить размер атомной ячейки (доля элементарной)
-    virtual double getAtomCellVolume() const override { return this->atom_cell_size; };
 
     // получить индексы соседей для момента по индексу в радиусе обрезки
     PYTHON_API virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) override {
@@ -684,9 +653,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         for (const auto &moment : this->_moments) {
             cloned_moments.push_back(moment->clone());
         }
-        auto cloned = std::make_unique<Geometry>(
-            cloned_moments, this->unit_cell_size, this->atom_cell_size, this->macrocell_size
-        );
+        auto cloned = std::make_unique<Geometry>(cloned_moments, this->macrocell_size);
         cloned->prepareData();
         return cloned;
     }
@@ -873,31 +840,19 @@ inline void pyBindGeometries(py::module_ &module) {
 
     py::class_<Geometry, AbstractGeometry, MacrocellManager, std::shared_ptr<Geometry>>(cartesian, "Geometry")
         .def(
-            py::init<const MomentsContainer<CartesianCoordSystem> &, double, double, double>(),
+            py::init<const MomentsContainer<CartesianCoordSystem> &, double>(),
             py::arg("moments"),
-            py::arg("unit_cell_size"),
-            py::arg("atom_cell_size"),
             py::arg("macrocell_size") = 1e-9,
             py::doc("Создаёт геометрию из контейнера моментов (rvalue или lvalue ссылки).\n"
                     "  Принимает размер макроячейки.")
         )
         .def(
-            py::init<const Eigen::MatrixXd &, MaterialRegistry &, double, double, double>(),
+            py::init<const Eigen::MatrixXd &, MaterialRegistry &, double>(),
             py::arg("moments"),
             py::arg("material_registry"),
-            py::arg("unit_cell_size"),
-            py::arg("atom_cell_size"),
             py::arg("macrocell_size") = 1e-9,
             py::doc("Создаёт геометрию из numpy массива моментов.\n"
                     "  Принимает регистр для проверки материалов и размер макроячейки.")
-        )
-        .def_readonly(
-            "unit_cell_size",
-            &Geometry::unit_cell_size,
-            py::doc("Объём (размер) элементарной ячейки в метрах")
-        )
-        .def_readonly( // TODO это свойство материала!!!
-            "atom_cell_size", &Geometry::atom_cell_size, py::doc("Объём атомной ячейки (доля элементарной)")
         )
         .doc() =
         "Геометрия, реализуемая в декартовой системе координат.\n"
