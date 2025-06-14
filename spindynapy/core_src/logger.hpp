@@ -1,9 +1,24 @@
-#ifndef __LOGGER_HPP__
-#define __LOGGER_HPP__
+#ifndef __SPINDYNAPY_LOGGER_HPP__
+#define __SPINDYNAPY_LOGGER_HPP__
 
 /**
- * Логирование сообщений в stdout или в любой другой поток вывода.
- *   Для отладки и мониторинга выполнения программы, длительности исполнения блоков кода.
+ * @file   logger.hpp
+ * @brief  Diagnostic logging utility for SpinDynaPy (thread‑safe singleton and scoped timer).
+ *
+ * This header implements a lightweight, header‑only facility that lets the C++ core emit
+ *   timestamped UTF‑8 logging. Messages are buffered in‑memory and written
+ *   to a user‑supplied `std::ostream` only when `flush()` is requested,
+ *   thereby amortising I/O cost across many log events.
+ *
+ * Exposed entities
+ * - `spindynapy::Logger`      – global singleton for buffered logging.
+ * - `spindynapy::ScopedTimer` – RAII helper that logs the execution time of a scope.
+ * - Convenience macros: `LOG_MSG`, `LOG_MSG_PRINT`, `SCOPED_LOG_TIMER`, `SCOPED_LOG_TIMER_PRINT`.
+ * - Function `pyBindLogger()` that exports the facility to Python as sub‑module `core.logger`.
+
+ * @note The logger is intended for debugging and profiling. It is **not** a persistent audit trail.
+ *
+ * @copyright 2025 SpinDynaPy
  */
 
 #include "constants.hpp"
@@ -17,10 +32,22 @@
 #include <pybind11/pytypes.h>
 #include <string>
 
-// Строка с текущими датой‑времем «YYYY-MM-DD HH:MM:SS»
-inline std::string now_timestamp_str() {
+// ===========================================================================
+//  Internal helper
+// ===========================================================================
+
+/**
+ * @brief Obtain the current local time as a printable timestamp.
+ *
+ * The function is header‑only and `noexcept`; the formatting buffer is fixed‑size so no dynamic
+ *   allocation occurs. Platform‑specific thread‑safe variants (`localtime_r`, `localtime_s`) are
+ *   selected at compile time.
+ *
+ * @returns A string formatted as `YYYY‑MM‑DD HH:MM:SS`.
+ */
+inline std::string iso_timestamp_now() noexcept {
     using namespace std::chrono;
-    auto tp = system_clock::now();
+    const auto tp = system_clock::now();
     std::time_t t = system_clock::to_time_t(tp);
     std::tm tm;
 #if defined(_MSC_VER)
@@ -28,55 +55,116 @@ inline std::string now_timestamp_str() {
 #else
     localtime_r(&t, &tm);
 #endif
-    char buf[20]; // «YYYY-MM-DD HH:MM:SS» = 19 символов + 0
+    char buf[20]; // 19 chars + null‑terminator
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
     return buf;
 }
 
 namespace spindynapy {
 
+// ===========================================================================
+//  LOGGER
+// ===========================================================================
+
 /**
- * Класс для логирования сообщений в stdout или в любой другой поток вывода.
- * !!! СИНГЛТОН !!! (потокобезопасный)
+ * @class   Logger
+ * @brief   Thread‑safe singleton that buffers log messages and flushes them on demand.
  *
- * Используется для отладки и мониторинга выполнения программы.
- * Вызывается через Logger::instance()
+ * The logger prepends every message with a human‑readable timestamp.
+ * Messages are stored in a `std::deque` to minimise allocation churn and are written
+ *   to the configured output stream **only** when `flush()` is invoked,
+ *   thereby amortising I/O cost across many log events.
+ *
+ * Guarantees
+ * - Singleton access via `Logger::instance()`.
+ * - All mutating operations (`add`, `flush`, `setStream`, `resetStream`) are mutex‑protected.
+ * - Default output stream is `std::cout`; users may redirect to any `std::ostream` that outlives the logger
+ *
+ * @note The singleton is never destroyed; relying modules may therefore safely log from static
+ *         destructors.
  */
 class PYTHON_API Logger {
   private:
-    // приватный конструктор синглтона
-    Logger() : _out(&std::cout) {}
+    /** @brief Private constructor; use `instance()` instead. */
+    Logger() noexcept : _out(&std::cout) {}
 
-    // поток вывода сообщений
+    /** Output destination – defaults to `std::cout`. (not owned) */
     std::ostream *_out;
-    // хранимый буфер в виде сообщений
+
+    /** Buffer of fully‑formatted log lines. */
     std::deque<std::string> _buffer;
-    // мьютекс для потокобезопасности
+
+    /** Mutex protecting both the buffer and the output pointer. */
     std::mutex _mutex;
 
   public:
-    // Получить объект логгера (синглтон)
-    PYTHON_API static Logger &instance() {
+    // Deleted copy / move to enforce singleton semantics.
+    Logger(const Logger &) = delete;
+    // Deleted copy / move to enforce singleton semantics.
+    Logger &operator=(const Logger &) = delete;
+    // Deleted copy / move to enforce singleton semantics.
+    Logger(Logger &&) = delete;
+    // Deleted copy / move to enforce singleton semantics.
+    Logger &operator=(Logger &&) = delete;
+
+    /**
+     * @brief Retrieve the global logger instance.
+     *
+     * First call lazily initialises the static instance.
+     * Subsequent calls are inexpensive reference returns.
+     *
+     * @returns Reference to the singleton logger.
+     */
+    PYTHON_API static Logger &instance() noexcept {
         static Logger static_logger;
         return static_logger;
     }
 
-    // Установить новый поток вывода
-    PYTHON_API void setStream(std::ostream &os) {
+    /**
+     * @brief Route log output to a user‑provided stream.
+     *
+     * @note Thread‑safe
+     *
+     * @param os Destination output stream that must remain valid until replaced
+     *              or `reset_to_stdout()` is invoked.
+     * @returns void. Mutates internal output parameter by provided stream.
+     */
+    PYTHON_API void setStream(std::ostream &os) noexcept {
         std::lock_guard<std::mutex> lock(this->_mutex);
         this->_out = &os;
     }
 
-    // Установить поток вывода в стандартный (stdout)
-    PYTHON_API void resetStream() { this->setStream(std::cout); }
+    /**
+     * @brief Convenience wrapper restoring logging to `stdout`.
+     *
+     * @details Reset to `std::cout`;
+     * @note Thread‑safe
+     *
+     * @returns void. Mutates internal output parameter to default.
+     */
+    PYTHON_API void resetStream() noexcept { this->setStream(std::cout); }
 
-    // Добавить сообщение в буффер
-    PYTHON_API void add(const std::string &msg) {
+    /**
+     * @brief Append a message to the internal buffer.
+     *
+     * The message is timestamped immediately; no I/O occurs until `flush()` is called.
+     * @note Thread‑safe
+     *
+     * @param msg UTF‑8 string to log.
+     * @returns void – adds one element to the buffer.
+     */
+    PYTHON_API void add(const std::string &msg) noexcept {
         std::lock_guard<std::mutex> lock(this->_mutex);
-        this->_buffer.emplace_back("[" + now_timestamp_str() + "] " + msg);
+        this->_buffer.emplace_back("[" + iso_timestamp_now() + "] " + msg);
     }
 
-    // Сбросить буфер в поток вывода
+    /**
+     * @brief Write all buffered messages to the configured stream and clear the buffer.
+     *
+     * @note Thread‑safe
+     *
+     * @returns void – empties the buffer and flushes the stream.
+     */
     PYTHON_API void flush() {
         std::lock_guard<std::mutex> lock(this->_mutex);
         while (!_buffer.empty()) {
@@ -87,30 +175,58 @@ class PYTHON_API Logger {
     }
 };
 
+// ===========================================================================
+//  ScopedTimer
+// ===========================================================================
+
 /**
- * RAII-Таймер для логирования времени выполнения блока кода.
+ * @class   ScopedTimer
+ * @brief   RAII helper that logs the duration of a scope in microseconds.
  *
- * Используется в сочетании с Logger для записи времени начала и окончания выполнения блока кода.
- * Деструктор таймера автоматически посчитает время выполнения и запишет длительность исполнения.
+ * The timer logs a `[START]` message upon construction and an `[END]` message upon destruction
+ *   containing the elapsed time.
+ * It is intended for quick instrumentation of code blocks without manual time bookkeeping.
+ *
+ * Usage example:
+ * @code{.cpp} {
+ *     {
+ *          spindynapy::ScopedTimer timer("matrix‑multiplication");
+ *          multiply(A, B, C);
+ *     }
+ * } @endcode
+ *
+ * @note Thread‑safe as long as the underlying `Logger` implementation is thread‑safe.
  */
 class PYTHON_API ScopedTimer {
   private:
-    // имя таймера
+    /** Logical name of the timed scope. */
     std::string _name;
-    // ссылка на логгер
+
+    /** Logger POINTER used for output (may be null). (not owned) */
     Logger *_logger;
-    // время запуска таймера
+
+    /** Start time recorded at construction. */
     std::chrono::high_resolution_clock::time_point _start;
 
   public:
-    // Конструктор таймера с именем и ссылкой на логгер (по умолчанию синглтоновский), записывает старт
+    /**
+     * @brief Construct a timer and emit the start message to logger.
+     *
+     * @param name   Logical name of the timed scope (will appear in log).
+     * @param logger Logger instance to use (defaults to global singleton).
+     * @returns void – constructs and records start time.
+     */
     PYTHON_API ScopedTimer(const std::string &name, Logger *logger = &Logger::instance())
         : _name(name), _logger(logger), _start(std::chrono::high_resolution_clock::now()) {
         if (_logger)
             _logger->add("[START] " + _name);
     }
 
-    // Деструктор таймера, который посчитает время выполнения и запишет длительность исполнения.
+    /**
+     * @brief Destruct the timer and emit to logger the end message with duration.
+     *
+     * @returns void – mutates logger state by adding an `[END]` entry.
+     */
     PYTHON_API ~ScopedTimer() {
         if (_logger) {
             auto end = std::chrono::high_resolution_clock::now();
@@ -120,51 +236,107 @@ class PYTHON_API ScopedTimer {
     }
 };
 
-// Отправить сообщение в логгер
+// ===========================================================================
+//  Convenience macros
+// ===========================================================================
+
+/** @brief Append MSG to global logger.
+ *  @param MSG UTF‑8 text to log.
+ *  @returns void – enqueues message. */
 #define LOG_MSG(msg) ::spindynapy::Logger::instance().add(msg);
 
-// Отправить сообщение в логгер и сразу опубликовать
+/** @brief Log MSG and immediately flush.
+ *  @param MSG UTF‑8 text to log.
+ *  @returns void – enqueues message and performs I/O. */
 #define LOG_MSG_PRINT(msg)                                                                                   \
     ::spindynapy::Logger::instance().add(msg);                                                               \
     ::spindynapy::Logger::instance().flush();
 
-// Определить таймер для логирования времени выполнения блока кода (деструктор посчитает время)
+/** @brief Create a scoped timer named NAME.
+ *  @param NAME Logical name of the timed scope. */
 #define SCOPED_LOG_TIMER(name) ::spindynapy::ScopedTimer timer(name, &Logger::instance());
 
-// Определить таймер и сразу печатать по его деструктуризации
+/** @brief Create a scoped timer named NAME and flush when the scope ends.
+ *  @param NAME Logical name of the timed scope. */
 #define SCOPED_LOG_TIMER_PRINT(name)                                                                         \
     ::spindynapy::ScopedTimer timer(name, &Logger::instance());                                              \
     ::spindynapy::Logger::instance().flush();
 
 } // namespace spindynapy
 
-// функция для связывания Логгера с Python
+// ===========================================================================
+//  Python bindings
+// ===========================================================================
+
+/**
+ * @brief Bind the logging utilities to a Python sub‑module.
+ *
+ * @param module Parent PyBind11 module (usually the core extension module).
+ * @returns void – extends the parent module.
+ */
 inline void pyBindLogger(py::module_ &module) {
     using namespace spindynapy;
 
-    // АДАПТЕР для iostream, чтобы можно было передавать Python-объекты в Logger
+    // ---------------------------------------------------------------------
+    //  Singleton specifics
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Adapter that exposes a Python file-like object as `std::ostream`.
+     *
+     * Holds a strong reference (`keep_alive`) so the Python object remains alive while C++
+     * writes through the STL interface (`os`).  Internally relies on
+     * `py::detail::pythonbuf` to bridge `ostream` and the Python `write()` protocol.
+     *
+     * @note Non-copyable, internal use only.
+     */
     struct IOStreamAdapter {
-        py::object keep_alive; // держим ссылку
-        py::detail::pythonbuf buf;
-        std::ostream os;
-        explicit IOStreamAdapter(const py::object &o) : keep_alive(o), buf(keep_alive), os(&buf) {}
+        py::object keep_alive;     ///< Python stream (ref-counted).
+        py::detail::pythonbuf buf; ///< pybind11 buffer wrapper.
+        std::ostream os;           ///< Facade over `buf`.
+        explicit IOStreamAdapter(const py::object &o) noexcept : keep_alive(o), buf(keep_alive), os(&buf) {}
     };
 
-    // Указатель-холдер. GC не удалит объект, nodelete.
+    /** @brief Non-owning pointer type for exposing the C++ singleton to Python. */
     using NoDelete = std::unique_ptr<Logger, py::nodelete>;
+
+    /**
+     * @brief Keeps the last Python stream alive while the logger uses it.
+     *
+     * When `Logger.set_stream()` is called from Python we wrap the object in an
+     * `IOStreamAdapter` and store it here so it cannot be garbage-collected.
+     */
+    static std::shared_ptr<IOStreamAdapter> singleton_logger_holder;
+
+    // ---------------------------------------------------------------------
+    //  Create submodule
+    // ---------------------------------------------------------------------
 
     // -------- | LOGGER | --------
     py::module_ logger_module = module.def_submodule("logger");
 
     logger_module.doc() =
-        "Логирование сообщений в stdout или в любой другой поток вывода.\n"
-        "  Для отладки и мониторинга выполнения программы, длительности исполнения блоков кода.\n"
-        "\n"
-        "Используется для отладки и мониторинга выполнения программы.\n"
-        "Вызывается через Logger::instance()";
+        ("@file   logger.hpp\n"
+         "@brief  Diagnostic logging utility for SpinDynaPy (thread-safe singleton and scoped timer).\n"
+         "\n"
+         "This header implements a lightweight, header-only facility that lets the C++ core emit\n"
+         "  timestamped UTF-8 logging. Messages are buffered in-memory and written\n"
+         "  to a user-supplied `std::ostream` only when `flush()` is requested,\n"
+         "  thereby amortising I/O cost across many log events.\n"
+         "\n"
+         "Exposed entities\n"
+         "- `spindynapy::Logger`      – global singleton for buffered logging.\n"
+         "- `spindynapy::ScopedTimer` – RAII helper that logs the execution time of a scope.\n"
+         "- Convenience macros: `LOG_MSG`, `LOG_MSG_PRINT`, `SCOPED_LOG_TIMER`, `SCOPED_LOG_TIMER_PRINT`.\n"
+         "- Function `pyBindLogger()` that exports the facility to Python as sub-module `core.logger`.\n"
+         "\n"
+         "@note The logger is intended for debugging and profiling. It is **not** a persistent audit trail.\n"
+         "\n"
+         "@copyright 2025 SpinDynaPy");
 
-    // холдер для сингтола, а то GC удалит объект
-    static std::shared_ptr<IOStreamAdapter> singleton_logger_holder;
+    // ---------------------------------------------------------------------
+    //  Logger class binding
+    // ---------------------------------------------------------------------
 
     py::class_<Logger, NoDelete>(logger_module, "Logger")
         .def(py::init([]() { return &Logger::instance(); }), py::return_value_policy::reference)
@@ -172,10 +344,35 @@ inline void pyBindLogger(py::module_ &module) {
             "instance",
             []() -> Logger & { return Logger::instance(); },
             py::return_value_policy::reference,
-            py::doc("Получить объект логгера (синглтон)")
+            py::doc("@brief Retrieve the global logger instance.\n"
+                    "\n"
+                    "First call lazily initialises the static instance.\n"
+                    "Subsequent calls are inexpensive reference returns.\n"
+                    "\n"
+                    "@returns Reference to the singleton logger.")
         )
-        .def("add", &Logger::add, py::arg("msg"), py::doc("Добавить сообщение в буфер логгера"))
-        .def("flush", &Logger::flush, py::doc("Сбросить буфер в поток вывода"))
+        .def(
+            "add",
+            &Logger::add,
+            py::arg("msg"),
+            py::doc("@brief Append a message to the internal buffer.\n"
+                    "\n"
+                    "The message is timestamped immediately; no I/O occurs until `flush()` is called.\n"
+                    "\n"
+                    "@note Thread-safe\n"
+                    "\n"
+                    "@param msg UTF-8 string to log.\n"
+                    "@returns void – adds one element to the buffer.")
+        )
+        .def(
+            "flush",
+            &Logger::flush,
+            py::doc("@brief Write all buffered messages to the configured stream and clear the buffer.\n"
+                    "\n"
+                    "@note Thread-safe\n"
+                    "\n"
+                    "@returns void – empties the buffer and flushes the stream.")
+        )
         .def(
             "set_stream",
             [](Logger &self, py::object stream) {
@@ -188,7 +385,13 @@ inline void pyBindLogger(py::module_ &module) {
                 self.setStream(singleton_logger_holder->os);
             },
             py::arg("stream"),
-            py::doc("Установить поток вывода для логгера")
+            py::doc("@brief Route log output to a user-provided stream.\n"
+                    "\n"
+                    "@note Thread-safe\n"
+                    "\n"
+                    "@param stream Destination output stream that must remain valid until replaced\n"
+                    "              or `reset_to_stdout()` is invoked. Use `None` to restore stdout.\n"
+                    "@returns void. Mutates internal output parameter by provided stream.")
         )
 
         .def(
@@ -197,12 +400,34 @@ inline void pyBindLogger(py::module_ &module) {
                 singleton_logger_holder.reset();
                 self.resetStream();
             },
-            py::doc("Сбросить поток вывода в стандартный (stdout)")
+            py::doc("@brief Convenience wrapper restoring logging to `stdout`.\n"
+                    "\n"
+                    "@details Reset to `std::cout`;\n"
+                    "@note Thread-safe\n"
+                    "\n"
+                    "@returns void. Mutates internal output parameter to default.")
         )
-        .doc() = "Логгер для вывода сообщений в поток.\n"
-                 "\n"
-                 "Используется для отладки и мониторинга выполнения программы.\n"
-                 "Вызывается через Logger::instance()";
+        .doc() =
+        ("@brief   Thread-safe singleton that buffers log messages and flushes them on demand.\n"
+         "\n"
+         "The logger prepends every message with a human-readable timestamp.\n"
+         "Messages are stored in a `std::deque` to minimise allocation churn and are written\n"
+         "  to the configured output stream **only** when `flush()` is invoked,\n"
+         "  thereby amortising I/O cost across many log events.\n"
+         "\n"
+         "Guarantees\n"
+         " - Singleton access via `Logger::instance()`.\n"
+         " - All mutating operations (`add`, `flush`, `setStream`, `resetStream`) are mutex-protected.\n"
+         " - Default output stream is `std::cout`; users may redirect to any `std::ostream` that outlives "
+         "the "
+         "logger\n"
+         "\n"
+         "@note The singleton is never destroyed; relying modules may therefore safely log from static\n"
+         "        destructors.");
+
+    // ---------------------------------------------------------------------
+    //  ScopedTimer binding
+    // ---------------------------------------------------------------------
 
     py::class_<spindynapy::ScopedTimer>(logger_module, "ScopedTimer")
         .def(
@@ -211,16 +436,32 @@ inline void pyBindLogger(py::module_ &module) {
             py::arg("logger") = &Logger::instance()
         )
         .def(
-            "__enter__", [](spindynapy::ScopedTimer &t) { return &t; }, py::doc("Запустить таймер")
+            "__enter__",
+            [](spindynapy::ScopedTimer &t) { return &t; },
+            py::doc("@brief Support for Python context-manager enter, starting timer\n\n@returns self.")
         )
         .def(
-            "__exit__", [](spindynapy::ScopedTimer &, py::args) {}, py::doc("Завершить таймер")
+            "__exit__",
+            [](spindynapy::ScopedTimer &, py::args) {},
+            py::doc("@brief Support for Python context-manager exit; timer is closed automatically.")
         )
         .doc() =
-        "RAII-Таймер для логирования времени выполнения блока кода.\n"
-        "\n"
-        "Используется в сочетании с Logger для записи времени начала и окончания выполнения блока кода.\n"
-        "Деструктор таймера автоматически посчитает время выполнения и запишет длительность исполнения.";
+        ("@class   ScopedTimer\n"
+         "@brief   RAII helper that logs the duration of a scope in microseconds.\n"
+         "\n"
+         "The timer logs a `[START]` message upon construction and an `[END]` message upon destruction\n"
+         "  containing the elapsed time.\n"
+         "It is intended for quick instrumentation of code blocks without manual time bookkeeping.\n"
+         "\n"
+         "Usage example:\n"
+         "```cpp\n"
+         "{\n"
+         "    spindynapy::ScopedTimer timer(\"matrix-multiplication\");\n"
+         "    multiply(A, B, C);\n"
+         "}\n"
+         "```\n"
+         "\n"
+         "@note Thread-safe as long as the underlying `Logger` implementation is thread-safe.");
 }
 
-#endif // ! __LOGGER_HPP__
+#endif // ! __SPINDYNAPY_LOGGER_HPP__
