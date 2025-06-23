@@ -94,15 +94,27 @@ inline void pyBindConstants(py::module_ &module) {
     // ---------------------------------------------------------------------
     py::module_ constants_module = module.def_submodule("constants");
 
-    constants_module.doc() =
-        "Модуль, отвечающий за предоставление фундаментальных констант \n"
-        "и любых других, используемых в приложении. \n"
-        "Здесь - константы через полные названия. \n"
-        "В .sci предоставлены \"научные\" короткие версии наименований констант (mu0, pi, etc...)";
+    constants_module.doc() = "@file   constants.hpp\n"
+                             "@brief  Compile‑time definitions of fundamental physical constants.\n"
+                             "\n"
+                             "This header provides a centralised, constexpr, type‑safe repository of the\n"
+                             "  fundamental constants required by the SpinDynaPy project.\n"
+                             "All values are expressed in SI units.\n"
+                             "\n"
+                             "Two nested namespaces are provided:\n"
+                             "  - `spindynapy::constants` — descriptive identifiers.\n"
+                             "  - `spindynapy::constants::sci` — concise scientific aliases (mu0, pi, …).\n"
+                             "\n"
+                             "The helper function ::pyBindConstants exports both namespaces to Python,\n"
+                             "creating the module layout:\n"
+                             "    spindynapy.constants         # long and short scientific names\n"
+                             "\n"
+                             "where every constant is mirrored as a `float` (Python double).\n";
 
     // ---------------------------------------------------------------------
     //  Long descriptive names
     // ---------------------------------------------------------------------
+
     constants_module.attr("VACUUM_MAGNETIC_PERMEABILITY") = VACUUM_MAGNETIC_PERMEABILITY;
     constants_module.attr("NUMBER_PI") = NUMBER_PI;
     constants_module.attr("BOHR_MAGNETON") = BOHR_MAGNETON;
@@ -115,6 +127,7 @@ inline void pyBindConstants(py::module_ &module) {
     // ---------------------------------------------------------------------
     //  Scientific aliases
     // ---------------------------------------------------------------------
+
     constants_module.attr("mu0") = sci::mu0;
     constants_module.attr("pi") = sci::pi;
     constants_module.attr("mu_B") = sci::mu_B;
