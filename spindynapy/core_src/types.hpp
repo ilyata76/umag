@@ -311,7 +311,6 @@ class Coordinates {
      * @returns void - mutates the internal state.
      */
     void setCoordinates(double x, double y, double z) {
-        // TODO: рассмотреть возможность setCoordinates(params), а дальше идентифицировать по номерам
         _coords[0] = x;
         _coords[1] = y;
         _coords[2] = z;

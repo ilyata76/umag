@@ -2,11 +2,42 @@
 #define __SOLVERS_HPP__
 
 /**
- * Решатель - это абстракция, которая берёт на себя задачу
- *  эволюционирования или любого другого прогрессирования системы в зависимости от
- *  предоставленных внешних параметров.
+ * @file   solvers.hpp
+ * @brief  Explicit time-integration solvers for atomistic spin dynamics (LLG-based).
  *
- * Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN
+ * This header defines the solver interface (`ISolver`) and concrete integrators
+ *   (`LLGSolver`, etc.).
+ * It also introduces `IFieldUpdater` for computing effective fields and concrete updaters.
+ *
+ * Conceptual overview:
+ * - A **Solver** implements a time-stepping algorithm (Euler, Heun, etc.) that updates the
+ *   directions of magnetic moments according to computed effective fields.
+ * - A **FieldUpdater** computes effective fields and energy densities for all spins
+ *   given the current geometry, interaction set, and material parameters.
+ * - The `SolverData` structure acts as a per-step container for intermediate results
+ *   (net field, total and per-interaction energy), decoupling computation from output.
+ *
+ * All solvers operate on geometries satisfying the `IGeometry` interface and are
+ *   parametrised by a coordinate system (`CoordSystemConcept`) to allow future extension.
+ *
+ * Exposed entities:
+ * - `SolverStrategy` – enum describing integration schemes (Euler, Heun…)
+ * - `SolverData<CoordSystem>` – storage class for fields and energies
+ * - `Solver<CoordSystem>` – base class for solvers
+ * - `FieldUpdater<CoordSystem>` – base class for field evaluators
+ *
+ * Concrete:
+ * - `LLGSolver` – default LLG-based integrator using Euler or Heun method
+ * - `OMPFieldUpdater` – OpenMP-based field updater implementation
+ *
+ * - Python binding macros: `SOLVER_TEMPLATE_BINDINGS`, `SOLVERDATA_TEMPLATE_BINDINGS`,
+ * `FIELDUPDATER_TEMPLATE_BINDINGS`
+ * - Python submodule binder: `pyBindSolvers()`
+ *
+ * @note All units are SI. Solver classes mutate geometry in-place.
+ *       The update steps are not atomic – parallelisation responsibility lies within the updater.
+ *
+ * @copyright 2025 SpinDynaPy
  */
 
 #include "constants.hpp"
@@ -32,36 +63,83 @@ namespace py = pybind11;
 namespace PYTHON_API spindynapy {
 
 /**
- * Стратегия решателя (интегратора) - метод интегрирования.
+ * @enum   SolverStrategy
+ * @brief  Numerical integration scheme used by a solver.
  *
- * EULER - метод Эйлера (самый простой)
- * MIDPOINT - метод Эйлера (частный случай Хойна без расчёта полей)
- * HEUN - метод Хойна (метод предиктор-корректор)
- *
+ * The supported explicit integrators are ordered by increasing accuracy (and computational cost):
+ *   - EULER    First-order Euler step.
+ *   - MIDPOINT Classical mid-point (Euler predictor, no extra field eval).
+ *   - HEUN     Second-order Heun predictor–corrector (two field evals).
  */
-enum class PYTHON_API SolverStrategy { EULER = 0, HEUN = 1, MIDPOINT = 2 };
+enum class PYTHON_API SolverStrategy {
+    EULER = 0,    ///< First-order Euler method.
+    MIDPOINT = 1, ///< Mid-point method ( (F+S)/2 ).
+    HEUN = 2      ///< Heun (predictor-corrector) method.
+};
+
+// ==========================================================================
+//  SolverData
+// ==========================================================================
 
 /**
- * Структура для организации данных, которые возвращает и использует решатель (интегратор).
+ * @struct SolverData
+ * @brief  Per-step buffer for effective fields and energy terms.
  *
- * Содержит эффективные поля и энергии, в т.ч. по каждому из взаимодействий.
- * Может использоваться как буфер для хранения промежуточных данных.
+ * @tparam CoordSystem  Any type satisfying @ref CoordSystemConcept (e.g. Cartesian).
+ *
+ * A solver typically performs two phases per time-step:
+ * 1. Field update – compute H_eff and interaction-resolved contributions.
+ * 2. Moment update – integrate the LLG equation using those fields.
+ *
+ * `SolverData` stores all intermediate results so they can be inspected, logged, or fed into a
+ *   post-processing pipeline.
+ *
+ * Layout
+ * - `effective_fields[i]`         → net H_eff acting on spin *i*.
+ * - `energies[i]`                 → net energy density for spin *i*.
+ * - `interaction_effective_fields[reg][i]` → per-interaction H_eff.
+ * - `interaction_energies[reg][i]`         → per-interaction energy term.
  */
 template <CoordSystemConcept CoordSystem> struct PYTHON_API SolverData {
   public:
-    // массив эффективных полей на каждый спин [index]
+    /** @brief Net effective field (sum) on every spin (indexed by geometry order). */
     PYTHON_API EffectiveFieldVector effective_fields;
-    // массив энергий по каждому из эффективных на каждый спин [index]
+    /** @brief Net energy (sum) for every spin (J). */
     PYTHON_API std::vector<double> energies;
-    // карта взаимодействий и массива его эффективных полей на каждый спин [index]
+    /**
+     * @brief Map: interaction registry id → vector of field contributions on every *i* spin.
+     * Each entry mirrors `effective_fields` but for a single interaction only.
+     */
     PYTHON_API std::unordered_map<regnum, EffectiveFieldVector> interaction_effective_fields;
-    // карта взаимодействий и массива его потенциалов-энергий на каждый спин [index]
+    /**
+     * @brief Map: interaction registry id → vector of energy contributions on every *i* spin.
+     * Units are joules; length matches `energies`.
+     */
     PYTHON_API std::unordered_map<regnum, std::vector<double>> interaction_energies;
 
-    // Конструктор по умолчанию
-    SolverData() {}; // TODO не забыть про nullptr и нулевые массивы...
+    /**
+     * @brief  Default constructor – creates *empty* buffers.
+     *
+     * @note The struct is intentionally initialised with **zero-sized containers**.
+     *  The owning solver must call `clear()`/`correct()` prior to
+     *  use so that the internal buffers match the geometry size.
+     *
+     * @returns Newly constructed *SolverData* with zero-initialised members.
+     */
+    SolverData() {};
 
-    // Конструктор
+    /**
+     * @brief  Fully parameterised constructor (shallow copy of buffers).
+     *
+     * All buffers are taken *by value* to avoid dangling references
+     *
+     * @param effective_fields             Effective fields per spin.
+     * @param energies                     Energies per spin.
+     * @param interaction_effective_fields Detailed field map per interaction.
+     * @param interaction_energies         Detailed energy map per interaction.
+     *
+     * @returns New *SolverData* populated with provided buffers.
+     */
     SolverData(
         const EffectiveFieldVector &effective_fields,
         std::vector<double> energies,
@@ -73,7 +151,14 @@ template <CoordSystemConcept CoordSystem> struct PYTHON_API SolverData {
           interaction_effective_fields(interaction_effective_fields),
           interaction_energies(interaction_energies) {}
 
-    // Очистить и занулить состояние на основе регистра взаимодействий
+    /**
+     * @brief  Reset all buffers to zero-filled state Sized for a geometry.
+     *
+     * @param moments_size         Number of spins in the geometry.
+     * @param interaction_registry Registry of active interactions (used to size the per-interaction maps).
+     *
+     * @returns void – *mutates the internal state* (buffers are resized and zero-initialised).
+     */
     PYTHON_API void clear(size_t moments_size, InteractionRegistry<CoordSystem> &interaction_registry) {
         this->effective_fields = EffectiveFieldVector(moments_size, EffectiveField::Zero());
         this->energies = std::vector<double>(moments_size, 0.0);
@@ -86,7 +171,18 @@ template <CoordSystemConcept CoordSystem> struct PYTHON_API SolverData {
         }
     };
 
-    // В случае, если изменилась геометрия, то нужно обновить размеры массивов
+    /**
+     * @brief  Adjust buffer sizes when geometry size changes.
+     *
+     * If the geometry grows/shrinks (e.g., after dynamic loading or a mask
+     * update) this method resizes all internal containers accordingly while
+     * preserving existing data.
+     *
+     * @param moments_size         Number of spins in the geometry.
+     * @param interaction_registry Registry of active interactions (used to size the per-interaction maps).
+     *
+     * @returns void – *mutates the internal state* by re-allocating buffers if needed.
+     */
     PYTHON_API void correct(size_t moments_size, InteractionRegistry<CoordSystem> &interaction_registry) {
         if (moments_size == this->effective_fields.size())
             return;
@@ -103,51 +199,67 @@ template <CoordSystemConcept CoordSystem> struct PYTHON_API SolverData {
     }
 };
 
+namespace cartesian {
+
 /**
- * Базовый интерфейс решателя (интегратора) в выбранной системе координат.
+ * @struct AbstractSolverData
+ * @brief  Per-step buffer for effective fields and energy terms.
  *
- * Решатель - это абстракция, которая берёт на себя задачу
- *  эволюционирования или любого другого прогрессирования системы в зависимости от
- *  предоставленных внешних параметров.
+ * Cartesian coord system.
  *
- * Типичный решатель использует стратегию интегрирования (метод Эйлера, Хьюна и т.д.).
- * А также рассчитывает самостоятельно эффективные поля и энергии взаимодействий
- *     на основе предоставленной ему стратегии расчёта (IFieldUpdater).
+ * A solver typically performs two phases per time-step:
+ * 1. Field update – compute H_eff and interaction-resolved contributions.
+ * 2. Moment update – integrate the LLG equation using those fields.
+ *
+ * `SolverData` stores all intermediate results so they can be inspected, logged, or fed into a
+ *   post-processing pipeline.
+ *
+ * Layout
+ * - `effective_fields[i]`         → net H_eff acting on spin *i*.
+ * - `energies[i]`                 → net energy density for spin *i*.
+ * - `interaction_effective_fields[reg][i]` → per-interaction H_eff.
+ * - `interaction_energies[reg][i]`         → per-interaction energy term.
  */
-template <CoordSystemConcept CoordSystem> class PYTHON_API ISolver {
-  protected:
-    // конструктор только для наследников
-    ISolver() = default;
+using AbstractSolverData = PYTHON_API SolverData<NamespaceCoordSystem>;
 
-  public:
-    // деструктор
-    virtual ~ISolver() = default;
+} // namespace cartesian
 
-    // обновить моменты в геометрии исходя из приложенных к ним эффективных полей
-    PYTHON_API virtual SolverData<CoordSystem> updateMoments(
-        IGeometry<CoordSystem> &geometry,
-        InteractionRegistry<CoordSystem> &interaction_registry,
-        MaterialRegistry &material_registry,
-        double dt
-    ) = 0;
-};
+// ==========================================================================
+//  Field updater
+// ==========================================================================
 
 /**
- * Базовый интерфейс стратегии обновления полей в геометрии в выбранной системе координат.
+ * @class  IFieldUpdater
+ * @brief  Strategy interface that calculates **effective fields & energies**.
  *
- * Стратегия обновления полей - это абстракция, которая берёт на себя задачу
- *      обновления и рассчёта эффективных полей и энергий в геометрии на каждый магнитный момент
+ * @tparam CoordSystem Coordinate-system tag.
+ *
+ * A field-updater encapsulates the sum of all interactions for a given
+ *   geometry.  Different implementations may employ OpenMP, CUDA, TBB…; the
+ *   solver is agnostic.
  */
 template <CoordSystemConcept CoordSystem> class PYTHON_API IFieldUpdater {
   protected:
-    // конструктор только для наследников
+    /**
+     * @brief Protected default constructor.
+     */
     IFieldUpdater() = default;
 
   public:
-    // деструктор
+    /**
+     * @brief Virtual destructor (default).
+     */
     virtual ~IFieldUpdater() = default;
 
-    // Рассчитать эффективные поля и энергии согласно заданной геометрии
+    /**
+     * @brief Compute effective fields & energies for *current* geometry state.
+     *
+     * @param geometry             Geometry for which to compute fields.
+     * @param interaction_registry Active interactions.
+     * @param material_registry    Materials referenced by `geometry`.
+     *
+     * @returns `SolverData` containing freshly calculated fields and energies.
+     */
     PYTHON_API virtual SolverData<CoordSystem> calculateFields(
         IGeometry<CoordSystem> &geometry,
         InteractionRegistry<CoordSystem> &interaction_registry,
@@ -158,44 +270,42 @@ template <CoordSystemConcept CoordSystem> class PYTHON_API IFieldUpdater {
 namespace cartesian {
 
 /**
- * Базовый интерфейс решателя (интегратора) в выбранной (ДЕКАРТОВОЙ) системе координат.
+ * @class  AbstractFieldUpdater
+ * @brief  Strategy interface that calculates **effective fields & energies**.
  *
- * Решатель - это абстракция, которая берёт на себя задачу
- *  эволюционирования или любого другого прогрессирования системы в зависимости от
- *  предоставленных внешних параметров.
- * Типичный решатель использует стратегию интегрирования (метод Эйлера, Хойна и т.д.).
- * А также рассчитывает самостоятельно эффективные поля и энергии взаимодействий
- *     на основе предоставленной ему стратегии расчёта (IFieldUpdater).
- */
-using AbstractSolver = PYTHON_API ISolver<NamespaceCoordSystem>;
-
-/**
- * Базовый интерфейс стратегии обновления полей в геометрии в выбранной (ДЕКАРТОВОЙ) системе координат.
+ * Cartesian coord system.
  *
- * Стратегия обновления полей - это абстракция, которая берёт на себя задачу
- *      обновления и рассчёта эффективных полей и энергий в геометрии на каждый магнитный момент
+ * A field-updater encapsulates the sum of all interactions for a given
+ *   geometry.  Different implementations may employ OpenMP, CUDA, TBB…; the
+ *   solver is agnostic.
  */
 using AbstractFieldUpdater = PYTHON_API IFieldUpdater<NamespaceCoordSystem>;
 
 /**
- * Структура для организации данных, которые возвращает и использует решатель (интегратор).
- *      В декартовой системе координат.
+ * @class  OMPFieldUpdater
+ * @brief  OpenMP-parallel field updater for Cartesian geometries.
  *
- * Содержит эффективные поля и энергии, в т.ч. по каждому из взаимодействий.
- * Может использоваться как буфер для хранения промежуточных данных.
- */
-using AbstractSolverData = PYTHON_API SolverData<NamespaceCoordSystem>;
-
-/**
- * Стратегия обновления поле в декаторой геометрии.
- *
- * Использует OpenMP для параллельного расчёта эффективных полей и энергий взаимодействий.
+ * A field-updater encapsulates the sum of all interactions for a given geometry.
+ * The class parallelises *per-spin* interaction contributions with OMP pragma.
  */
 class PYTHON_API OMPFieldUpdater : public AbstractFieldUpdater {
   protected:
-    AbstractSolverData _step_data;
+    AbstractSolverData _step_data; ///< Internal buffer reused every call (minimises re-allocations).
 
-    // Рассчитать эффективные поля и энергии согласно заданной геометрии для конкретного взаимодействия
+    /**
+     * @brief Calculate field & energy contribution from a single interaction.
+     *
+     * Helper invoked inside the outer loop over `interaction_registry`.
+     * Thread-safe: writes into local vectors then enters a critical section for
+     *   the final reduction.
+     *
+     * @param geometry           Active geometry.
+     * @param interaction_regnum Registry id of the interaction.
+     * @param interaction        Pointer to the interaction implementation.
+     * @param material_registry  Material look-up table.
+     *
+     * @returns void – mutates internal data.
+     */
     void calculateFieldContribution(
         AbstractGeometry &geometry,
         regnum interaction_regnum,
@@ -242,10 +352,18 @@ class PYTHON_API OMPFieldUpdater : public AbstractFieldUpdater {
     }
 
   public:
-    // Конструктор
+    /** Default constructor – no state. */
     PYTHON_API OMPFieldUpdater() {};
 
-    // Рассчитать эффективные поля и энергии согласно заданной геометрии
+    /**
+     * @brief Compute effective fields & energies for *current* geometry state.
+     *
+     * @param geometry             Geometry for which to compute fields.
+     * @param interaction_registry Active interactions.
+     * @param material_registry    Materials referenced by `geometry`.
+     *
+     * @returns `SolverData` containing freshly calculated fields and energies.
+     */
     PYTHON_API virtual AbstractSolverData calculateFields(
         AbstractGeometry &geometry,
         AbstractInteractionRegistry &interaction_registry,
@@ -266,22 +384,131 @@ class PYTHON_API OMPFieldUpdater : public AbstractFieldUpdater {
     }
 };
 
+}; // namespace cartesian
+
+// ==========================================================================
+//  Solvers
+// ==========================================================================
+
 /**
- * Решатель ЛЛГ (Ландау-Лифшица-Гильберта) - это решатель, который использует
- *  уравнение ЛЛГ спиновой динамики для обновления моментов в геометрии.
+ * @class  ISolver
+ * @brief  Abstract interface for spin dynamics solvers in a given coordinate system.
  *
- * Решатель использует метод Эйлера (+ midpoint) или метод Хойна для интегрирования уравнения ЛЛГ с шагом dt.
- * А также рассчитывает самостоятельно эффективные поля и энергии взаимодействий
- *     на основе предоставленной ему стратегии расчёта (IFieldUpdater).
+ * @tparam CoordSystem  Coordinate-system tag that satisfies @ref CoordSystemConcept.
+ *
+ * Conceptual overview:
+ *  A solver integrates the system's magnetic moments over time by computing and evolving
+ *    the spin directions according to a chosen time-integration scheme (Euler,
+ *    Heun, etc.). This interface decouples the integration policy from the
+ *    geometry and interaction definitions.
+ *
+ * The solver modifies the geometry in-place and returns a full snapshot of the
+ *   effective fields and energy contributions used in the step. This enables
+ *   inspection, logging, or post-processing without recomputing.
+ *
+ * @note Concrete implementations must implement the method `updateMoments()`.
+ *       They are responsible for allocating intermediate data and managing
+ *       consistency between field updates and geometry states.
+ */
+template <CoordSystemConcept CoordSystem> class PYTHON_API ISolver {
+  protected:
+    /**
+     * @brief Protected default constructor to prevent direct instantiation.
+     */
+    ISolver() = default;
+
+  public:
+    /**
+     * @brief Virtual destructor (default).
+     */
+    virtual ~ISolver() = default;
+
+    /**
+     * @brief Advance the geometry by one time-step.
+     *
+     * The implementation must: (i) compute effective fields via its
+     * `IFieldUpdater`, (ii) integrate equations or others according to its
+     * `SolverStrategy`, and (iii) write updated spin directions back into
+     * `geometry`.
+     *
+     * @param geometry             Target geometry (spins mutated in-place).
+     * @param interaction_registry Registry of active interactions.
+     * @param material_registry    Registry of materials (look-ups only).
+     * @param dt                   Time-step (s).
+     *
+     * @returns A fully populated `SolverData` snapshot corresponding to the
+     *          fields/energies *used* during this step.
+     */
+    PYTHON_API virtual SolverData<CoordSystem> updateMoments(
+        IGeometry<CoordSystem> &geometry,
+        InteractionRegistry<CoordSystem> &interaction_registry,
+        MaterialRegistry &material_registry,
+        double dt
+    ) = 0;
+};
+
+namespace cartesian {
+
+/**
+ * @class  AbstractSolver
+ * @brief  Abstract interface for spin dynamics solvers in a given coordinate system.
+ *
+ * Cartesian coord system.
+ *
+ * Conceptual overview:
+ *  A solver integrates the system's magnetic moments over time by computing and evolving
+ *    the spin directions according to a chosen time-integration scheme (Euler,
+ *    Heun, etc.). This interface decouples the integration policy from the
+ *    geometry and interaction definitions.
+ *
+ * The solver modifies the geometry in-place and returns a full snapshot of the
+ *   effective fields and energy contributions used in the step. This enables
+ *   inspection, logging, or post-processing without recomputing.
+ *
+ * @note Concrete implementations must implement the method `updateMoments()`.
+ *       They are responsible for allocating intermediate data and managing
+ *       consistency between field updates and geometry states.
+ */
+using AbstractSolver = PYTHON_API ISolver<NamespaceCoordSystem>;
+
+/**
+ * @class LLGSolver
+ * @brief Solver for time evolution of magnetic systems via the Landau-Lifshitz-Gilbert (LLG) equation.
+ *
+ * The LLGSolver class implements the core of explicit time-integration for atomistic spin dynamics
+ *   using the Landau-Lifshitz-Gilbert formalism. It combines a numerical integrator (Euler, Heun)
+ *   with a field update strategy to simulate the evolution of spin systems in time.
+ *
+ *  Formula: dS/dt = −γ / (1 + α²) [ S × H_eff + α S × (S × H_eff) ]
+ *
+ * This solver mutates the geometry in place, updating the directions of magnetic moments using
+ *   effective fields derived from registered interactions. It is responsible for both computing
+ *   the spin derivatives (`dS/dt`) and applying them to the geometry using a selected time-stepping method.
+ *
+ * Internally, the solver delegates effective field computation to an Field Updater and
+ *   integrates the LLG equation using either Strategy methods.
+ *
+ * @note All physical units are assumed to be in SI. Spin vectors are expected to be normalized.
  */
 class PYTHON_API LLGSolver : public AbstractSolver {
   protected:
-    // выбранная стратегия решателя (интегратора) - метод интегрирования
-    SolverStrategy _strategy;
-    // стратегия вычисления эффективного поля на каждый спин
-    std::unique_ptr<AbstractFieldUpdater> _field_updater;
+    SolverStrategy _strategy; ///< Numerical integration scheme used by this solver (EULER, HEUN, etc.).
+    std::unique_ptr<AbstractFieldUpdater>
+        _field_updater; ///< Field updater strategy used to compute effective fields.
 
-    // вычисление изменения момента по уравнению ЛЛГ (правая часть уравнения) (TODO: команда + стратегия)
+    /**
+     * @brief Compute the time derivative of a spin (dS/dt) using the LLG equation.
+     *
+     * This method implements the core of the LLG right-hand side:
+     *     dS/dt = −γ / (1 + α²) [ S × H_eff + α S × (S × H_eff) ]
+     *   where γ is the gyromagnetic ratio and α is the damping constant.
+     *
+     * @param material         Material parameters (gyromagnetic ratio, damping).
+     * @param moment_vector    Current spin vector (unit length).
+     * @param effective_field  Local effective magnetic field (SI units).
+     *
+     * @returns The instantaneous spin change vector dS/dt (unitless).
+     */
     Eigen::Vector3d calculateLLGMomentChange(
         Material &material, Eigen::Vector3d moment_vector, Eigen::Vector3d effective_field
     ) {
@@ -295,7 +522,21 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         return moment_change;
     }
 
-    // вычисление изменения моментов по уравнению ЛЛГ (правые части системы уравнений)
+    /**
+     * @brief Compute LLG moment changes for the entire geometry.
+     *
+     * Iterates over each spin in the geometry, using its material properties and the local
+     *   effective field (from `SolverData`) to compute the LLG derivative vector.
+     *
+     * This method implements the core of the LLG right-hand side:
+     *     dS/dt = −γ / (1 + α²) [ S × H_eff + α S × (S × H_eff) ]
+     *   where γ is the gyromagnetic ratio and α is the damping constant.
+     *
+     * @param geometry  Magnetic geometry containing spin moments.
+     * @param data      Snapshot of effective fields and energies.
+     *
+     * @returns Vector of dS/dt changes for each spin.
+     */
     virtual std::vector<Eigen::Vector3d> calculateLLGMomentsChange(
         IGeometry<NamespaceCoordSystem> &geometry, AbstractSolverData &data
     ) {
@@ -313,7 +554,17 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         return result;
     }
 
-    // обновить моменты в геометрии согласно правым частям уравнения ЛЛГ
+    /**
+     * @brief Apply spin updates to geometry.
+     *
+     * Uses finite difference: S(t+dt) = S(t) + dt * dS/dt
+     *
+     * @param geometry        The system geometry to mutate.
+     * @param moment_changes  Computed dS/dt values.
+     * @param dt              Time-step (s).
+     *
+     * @returns Mutates the geometry in place.
+     */
     virtual void updateMomentsInGeometry(
         IGeometry<NamespaceCoordSystem> &geometry, std::vector<Eigen::Vector3d> &moment_changes, double dt
     ) {
@@ -328,7 +579,19 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         }
     }
 
-    // решение по методу Эйлера: сделать шаг с конечными разностями
+    /**
+     * @brief Perform a single integration step using the Euler method.
+     *
+     * Effective fields are computed once, then the LLG equation is integrated explicitly
+     *   using the computed dS/dt to advance the spin directions.
+     *
+     * @param geometry             System geometry to mutate.
+     * @param interaction_registry Interaction registry providing contributions.
+     * @param material_registry    Material lookup registry.
+     * @param dt                   Time-step (s).
+     *
+     * @returns `SolverData` corresponding to the computed effective fields.
+     */
     virtual AbstractSolverData updateMomentsViaEuler(
         IGeometry<NamespaceCoordSystem> &geometry,
         InteractionRegistry<NamespaceCoordSystem> &interaction_registry,
@@ -342,7 +605,19 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         return solver_data;
     }
 
-    // решение по методу Хойна: предиктор-корректор
+    /**
+     * @brief Perform a single integration step using the Heun (predictor-corrector) method.
+     *
+     * Two field evaluations are used: one on the base geometry and one on the predicted geometry
+     *   to increase accuracy. The spin change is then averaged and applied to the original state.
+     *
+     * @param geometry             System geometry to mutate.
+     * @param interaction_registry Interaction registry providing contributions.
+     * @param material_registry    Material lookup registry.
+     * @param dt                   Time-step (s).
+     *
+     * @returns `SolverData` from the predictor pass.
+     */
     virtual AbstractSolverData updateMomentsViaHeun(
         IGeometry<NamespaceCoordSystem> &geometry,
         InteractionRegistry<NamespaceCoordSystem> &interaction_registry,
@@ -377,11 +652,30 @@ class PYTHON_API LLGSolver : public AbstractSolver {
     }
 
   public:
-    // базовый конструктор
+    /**
+     * @brief Construct a new LLGSolver.
+     *
+     * Initializes the solver with a given integration strategy and a default OpenMP-based field updater.
+     *
+     * @param strategy  Integration method to use (defaults to Euler).
+     */
     PYTHON_API LLGSolver(SolverStrategy strategy = SolverStrategy::EULER)
         : _strategy(strategy), _field_updater(std::make_unique<OMPFieldUpdater>()) {};
 
-    // обновить моменты в геометрии, сделать "шаг"
+    /**
+     * @brief Advance the system by one time-step.
+     *
+     * Delegates field computation to the field updater, then integrates using
+     *   the configured strategy (Euler or Heun). The spin moments are updated in place.
+     * @note Mutates the geometry in-place.
+     *
+     * @param geometry             Magnetic geometry to update.
+     * @param interaction_registry Registry of interactions (used for field computation).
+     * @param material_registry    Registry of material properties (read-only).
+     * @param dt                   Simulation time-step (s).
+     *
+     * @returns Snapshot of the solver state (fields and energies) that were used.
+     */
     PYTHON_API virtual AbstractSolverData updateMoments(
         IGeometry<NamespaceCoordSystem> &geometry,
         InteractionRegistry<NamespaceCoordSystem> &interaction_registry,
@@ -403,6 +697,14 @@ class PYTHON_API LLGSolver : public AbstractSolver {
 
 }; // namespace PYTHON_API spindynapy
 
+// ==========================================================================
+//  Python bindings
+// ==========================================================================
+
+/**
+ * @def   SOLVER_TEMPLATE_BINDINGS
+ * @brief PyBind11 boilerplate for exposing `update_moments`.
+ */
 #define SOLVER_TEMPLATE_BINDINGS(cls)                                                                        \
     .def(                                                                                                    \
         "update_moments",                                                                                    \
@@ -411,9 +713,26 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         py::arg("interaction_registry"),                                                                     \
         py::arg("material_registry"),                                                                        \
         py::arg("dt"),                                                                                       \
-        py::doc("обновить моменты в геометрии, сделать \"шаг\"")                                             \
+        py::doc("@brief Advance the geometry by one time-step.\n"                                            \
+                "\n"                                                                                         \
+                "The implementation must: (i) compute effective fields via its\n"                            \
+                "`IFieldUpdater`, (ii) integrate equations or others according to its\n"                     \
+                "`SolverStrategy`, and (iii) write updated spin directions back into\n"                      \
+                "`geometry`.\n"                                                                              \
+                "\n"                                                                                         \
+                "@param geometry             Target geometry (spins mutated in-place).\n"                    \
+                "@param interaction_registry Registry of active interactions.\n"                             \
+                "@param material_registry    Registry of materials (look-ups only).\n"                       \
+                "@param dt                   Time-step (s).\n"                                               \
+                "\n"                                                                                         \
+                "@returns A fully populated `SolverData` snapshot corresponding to the\n"                    \
+                "        fields/energies *used* during this step.\n")                                        \
     )
 
+/**
+ * @def   SOLVERDATA_TEMPLATE_BINDINGS
+ * @brief PyBind11 boilerplate for exposing the members of @ref SolverData.
+ */
 #define SOLVERDATA_TEMPLATE_BINDINGS(cls)                                                                    \
     .def_readwrite("effective_fields", &cls::effective_fields)                                               \
         .def_readwrite("energies", &cls::energies)                                                           \
@@ -424,16 +743,38 @@ class PYTHON_API LLGSolver : public AbstractSolver {
             &cls::clear,                                                                                     \
             py::arg("moments_size"),                                                                         \
             py::arg("interaction_registry"),                                                                 \
-            py::doc("очистить и занулить состояние на основе регистра взаимодействий")                       \
+            py::doc(                                                                                         \
+                "@brief  Reset all buffers to zero-filled state Sized for a geometry.\n"                     \
+                "\n"                                                                                         \
+                "@param moments_size         Number of spins in the geometry.\n"                             \
+                "@param interaction_registry Registry of active interactions (used to size the "             \
+                "per-interaction maps).\n"                                                                   \
+                "\n"                                                                                         \
+                "@returns void – *mutates the internal state* (buffers are resized and zero-initialised)." \
+            )                                                                                                \
         )                                                                                                    \
         .def(                                                                                                \
             "correct",                                                                                       \
             &cls::correct,                                                                                   \
             py::arg("moments_size"),                                                                         \
             py::arg("interaction_registry"),                                                                 \
-            py::doc("в случае, если изменилась геометрия, то нужно обновить размеры массивов")               \
+            py::doc("@brief  Adjust buffer sizes when geometry size changes.\n"                              \
+                    "\n"                                                                                     \
+                    "If the geometry grows/shrinks (e.g., after dynamic loading or a mask\n"                 \
+                    "update) this method resizes all internal containers accordingly while\n"                \
+                    "preserving existing data.\n"                                                            \
+                    "\n"                                                                                     \
+                    "@param moments_size         Number of spins in the geometry.\n"                         \
+                    "@param interaction_registry Registry of active interactions (used to size the "         \
+                    "per-interaction maps).\n"                                                               \
+                    "\n"                                                                                     \
+                    "@returns void – *mutates the internal state* by re-allocating buffers if needed.")      \
         )
 
+/**
+ * @def   FIELDUPDATER_TEMPLATE_BINDINGS
+ * @brief PyBind11 boilerplate for exposing `calculate_fields`.
+ */
 #define FIELDUPDATER_TEMPLATE_BINDINGS(cls)                                                                  \
     .def(                                                                                                    \
         "calculate_fields",                                                                                  \
@@ -441,34 +782,72 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         py::arg("geometry"),                                                                                 \
         py::arg("interaction_registry"),                                                                     \
         py::arg("material_registry"),                                                                        \
-        py::doc("рассчитать эффективные поля и энергии согласно заданной геометрии")                         \
+        py::doc("@brief Compute effective fields & energies for *current* geometry state.\n"                 \
+                "\n"                                                                                         \
+                "@param geometry             Geometry for which to compute fields.\n"                        \
+                "@param interaction_registry Active interactions.\n"                                         \
+                "@param material_registry    Materials referenced by `geometry`.\n"                          \
+                "\n"                                                                                         \
+                "@returns `SolverData` containing freshly calculated fields and energies.")                  \
     )
 
 inline void pyBindSolvers(py::module_ &module) {
     using namespace spindynapy;
 
-    // -------- | SOLVERS | --------
+    // ---------------------------------------------------------------------
+    //  Create submodule
+    // ---------------------------------------------------------------------
+
     py::module_ solvers_module = module.def_submodule("solvers");
 
-    solvers_module.doc() = "Решатель - это абстракция, которая берёт на себя задачу\n"
-                           " эволюционирования или любого другого прогрессирования системы в зависимости от\n"
-                           " предоставленных внешних параметров.\n"
-                           "\n"
-                           "Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN, ...";
+    solvers_module.doc() =
+        "@brief  Explicit time-integration solvers for atomistic spin dynamics (LLG-based).\n"
+        "\n"
+        "This header defines the solver interface (`ISolver`) and concrete integrators\n"
+        "  (`LLGSolver`, etc.).\n"
+        "It also introduces `IFieldUpdater` for computing effective fields and concrete updaters.\n"
+        "\n"
+        "Conceptual overview:\n"
+        "- A **Solver** implements a time-stepping algorithm (Euler, Heun, etc.) that updates the\n"
+        "  directions of magnetic moments according to computed effective fields.\n"
+        "- A **FieldUpdater** computes effective fields and energy densities for all spins\n"
+        "  given the current geometry, interaction set, and material parameters.\n"
+        "- The `SolverData` structure acts as a per-step container for intermediate results\n"
+        "  (net field, total and per-interaction energy), decoupling computation from output.\n"
+        "All solvers operate on geometries satisfying the `IGeometry` interface and are\n"
+        "  parametrised by a coordinate system (`CoordSystemConcept`) to allow future extension.\n"
+        "\n"
+        "Exposed entities:\n"
+        "- `SolverStrategy` – enum describing integration schemes (Euler, Heun…)\n"
+        "- `SolverData<CoordSystem>` – storage class for fields and energies\n"
+        "- `Solver<CoordSystem>` – base class for solvers\n"
+        "- `FieldUpdater<CoordSystem>` – base class for field evaluators\n"
+        "Concrete:\n"
+        "- `LLGSolver` – default LLG-based integrator using Euler or Heun method\n"
+        "- `OMPFieldUpdater` – OpenMP-based field updater implementation\n"
+        "\n"
+        "- Python binding macros: `SOLVER_TEMPLATE_BINDINGS`, `SOLVERDATA_TEMPLATE_BINDINGS`, "
+        "`FIELDUPDATER_TEMPLATE_BINDINGS`\n"
+        "- Python submodule binder: `pyBindSolvers()`\n"
+        "\n"
+        "@note All units are SI. Solver classes mutate geometry in-place.\n"
+        "      The update steps are not atomic – parallelisation responsibility lies within the updater.\n";
 
-    // Биндим enum
+    // ---------------------------------------------------------------------
+    //  Strategy for solvers
+    // ---------------------------------------------------------------------
+
     py::enum_<SolverStrategy>(solvers_module, "SolverStrategy")
-        .value("EULER", SolverStrategy::EULER, "Метод Эйлера (самый простой)")
-        .value("HEUN", SolverStrategy::HEUN, "Метод Хойна (предиктор-корректор (2 расчёта))");
+        .value("EULER", SolverStrategy::EULER, "First-order Euler method.")
+        .value("HEUN", SolverStrategy::HEUN, "Heun (predictor-corrector) method.");
 
-    // -------- | CARTESIAN SOLVERS | --------
+    // ---------------------------------------------------------------------
+    //  Cartesian submodule bindings
+    // ---------------------------------------------------------------------
+
     py::module_ cartesian = solvers_module.def_submodule("cartesian");
+    cartesian.doc() = solvers_module.doc();
 
-    cartesian.doc() = "Решатель - это абстракция, которая берёт на себя задачу\n"
-                      " эволюционирования или любого другого прогрессирования системы в зависимости от\n"
-                      " предоставленных внешних параметров.\n"
-                      "\n"
-                      "Стратегия решателя (интегратора) - метод интегрирования: EULER, HEUN, ...";
     {
         using cartesian::AbstractFieldUpdater;
         using cartesian::AbstractSolver;
@@ -479,52 +858,84 @@ inline void pyBindSolvers(py::module_ &module) {
         py::class_<AbstractSolverData>(cartesian, "SolverData")
             SOLVERDATA_TEMPLATE_BINDINGS(AbstractSolverData)
                 .doc() =
-            "Структура для организации данных, которые возвращает и использует решатель (интегратор).\n"
-            "     В декартовой системе координат.\n"
+            "@struct AbstractSolverData\n"
+            "@brief  Per-step buffer for effective fields and energy terms.\n"
             "\n"
-            "Содержит эффективные поля и энергии, в т.ч. по каждому из взаимодействий.\n"
-            "Может использоваться как буфер для хранения промежуточных данных.\n";
+            "Cartesian coord system.\n"
+            "A solver typically performs two phases per time-step:\n"
+            "1. Field update – compute H_eff and interaction-resolved contributions.\n"
+            "2. Moment update – integrate the LLG equation using those fields.\n"
+            "\n"
+            "`SolverData` stores all intermediate results so they can be inspected, logged, or fed into a\n"
+            "  post-processing pipeline.\n"
+            "\n"
+            "Layout\n"
+            "- `effective_fields[i]`         → net H_eff acting on spin *i*.\n"
+            "- `energies[i]`                 → net energy density for spin *i*.\n"
+            "- `interaction_effective_fields[reg][i]` → per-interaction H_eff.\n"
+            "- `interaction_energies[reg][i]`         → per-interaction energy term.";
 
         py::class_<AbstractFieldUpdater, std::shared_ptr<AbstractFieldUpdater>>(
             cartesian, "AbstractFieldUpdater"
         ) FIELDUPDATER_TEMPLATE_BINDINGS(AbstractFieldUpdater)
-            .doc() =
-            "Базовый интерфейс стратегии обновления полей в геометрии в выбранной (ДЕКАРТОВОЙ) системе "
-            "координат.\n"
-            "\n"
-            "Стратегия обновления полей - это абстракция, которая берёт на себя задачу\n"
-            "  обновления и рассчёта эффективных полей и энергий в геометрии на каждый магнитный момент.";
+            .doc() = "Strategy interface that calculates **effective fields & energies**.\n"
+                     "\n"
+                     "Cartesian coord system.\n"
+                     "A field-updater encapsulates the sum of all interactions for a given\n"
+                     "  geometry.  Different implementations may employ OpenMP, CUDA, TBB…; the\n"
+                     "  solver is agnostic.";
 
         py::class_<OMPFieldUpdater, AbstractFieldUpdater, std::shared_ptr<OMPFieldUpdater>>(
             cartesian, "OMPFieldUpdater"
         )
             .def(py::init<>())
-            .doc() =
-            "Стратегия обновления поле в декаторой геометрии.\n"
-            "\n"
-            "  Использует OpenMP для параллельного расчёта эффективных полей и энергий взаимодействий.";
+            .doc() = "OpenMP-parallel field updater for Cartesian geometries.\n"
+                     "\n"
+                     "A field-updater encapsulates the sum of all interactions for a given geometry.\n"
+                     "The class parallelises *per-spin* interaction contributions with OMP pragma.\n";
 
         py::class_<AbstractSolver, std::shared_ptr<AbstractSolver>>(cartesian, "AbstractSolver")
             SOLVER_TEMPLATE_BINDINGS(AbstractSolver)
                 .doc() =
-            "Базовый интерфейс решателя (интегратора) в выбранной (ДЕКАРТОВОЙ) системе координат.\n"
-            "Решатель - это абстракция, которая берёт на себя задачу\n"
-            "    эволюционирования или любого другого прогрессирования системы в зависимости от\n"
-            "    предоставленных внешних параметров.\n"
+            "Abstract interface for spin dynamics solvers in a given coordinate system.\n"
             "\n"
-            "Типичный решатель использует стратегию интегрирования (метод Эйлера, Хойна и т.д.).\n"
-            "А также рассчитывает самостоятельно эффективные поля и энергии взаимодействий\n"
-            "    на основе предоставленной ему стратегии расчёта (IFieldUpdater).";
+            "Cartesian coord system.\n"
+            "Conceptual overview:\n"
+            "  A solver integrates the system's magnetic moments over time by computing and evolving\n"
+            "    the spin directions according to a chosen time-integration scheme (Euler,\n"
+            "    Heun, etc.). This interface decouples the integration policy from the\n"
+            "    geometry and interaction definitions.\n"
+            "\n"
+            "The solver modifies the geometry in-place and returns a full snapshot of the\n"
+            "  effective fields and energy contributions used in the step. This enables\n"
+            "  inspection, logging, or post-processing without recomputing.\n"
+            "\n"
+            "@note Concrete implementations must implement the method `updateMoments()`.\n"
+            "      They are responsible for allocating intermediate data and managing\n"
+            "      consistency between field updates and geometry states.";
 
         py::class_<LLGSolver, AbstractSolver, std::shared_ptr<LLGSolver>>(cartesian, "LLGSolver")
             .def(py::init<SolverStrategy>(), py::arg("strategy") = SolverStrategy::EULER)
-            .doc() = "Решатель ЛЛГ (Ландау-Лифшица-Гильберта) - это решатель, который использует\n"
-                     "  уравнение ЛЛГ спиновой динамики для обновления моментов в геометрии.\n"
-                     "\n"
-                     "Решатель использует метод Эйлера (+ midpoint) или метод Хойна для интегрирования "
-                     "   уравнения ЛЛГ с шагом dt.\n"
-                     "А также рассчитывает самостоятельно эффективные поля и энергии взаимодействий\n"
-                     "   на основе предоставленной ему стратегии расчёта (IFieldUpdater).";
+            .doc() =
+            "Solver for time evolution of magnetic systems via the Landau-Lifshitz-Gilbert (LLG) equation.\n"
+            "\n"
+            "The LLGSolver class implements the core of explicit time-integration for atomistic spin "
+            "dynamics\n"
+            "  using the Landau-Lifshitz-Gilbert formalism. It combines a numerical integrator (Euler, "
+            "Heun)\n"
+            "  with a field update strategy to simulate the evolution of spin systems in time.\n"
+            "\n"
+            " Formula: dS/dt = -γ / (1 + α²) [ S × H_eff + α S × (S × H_eff) ]\n"
+            "\n"
+            "This solver mutates the geometry in place, updating the directions of magnetic moments using\n"
+            "  effective fields derived from registered interactions. It is responsible for both computing\n"
+            "  the spin derivatives (`dS/dt`) and applying them to the geometry using a selected "
+            "time-stepping method.\n"
+            "\n"
+            "Internally, the solver delegates effective field computation to an Field Updater and\n"
+            "  integrates the LLG equation using either Strategy methods.\n"
+            "\n"
+            "@note All physical units are assumed to be in SI. Spin vectors are expected to be normalized.";
     }
 }
 
