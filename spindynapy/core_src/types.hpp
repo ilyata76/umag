@@ -752,8 +752,16 @@ inline void pyBindTypes(py::module_ &module) {
                     "\n"
                     "@returns `regnum` unique number.")
         )
-        .def_readonly("unit_cell_size", &Material::unit_cell_size)
-        .def_readonly("atom_cell_size", &Material::atom_cell_size)
+        .def_readwrite("material_number", &Material::material_number)
+        .def_readwrite("exchange_constant_J", &Material::exchange_constant_J)
+        .def_readwrite(
+            "atomic_magnetic_saturation_magnetization", &Material::atomic_magnetic_saturation_magnetization
+        )
+        .def_readwrite("anisotropy", &Material::anisotropy)
+        .def_readwrite("gyromagnetic_ratio", &Material::gyromagnetic_ratio)
+        .def_readwrite("damping_constant", &Material::damping_constant)
+        .def_readwrite("unit_cell_size", &Material::unit_cell_size)
+        .def_readwrite("atom_cell_size", &Material::atom_cell_size)
         .doc() =
         "@class  Material\n"
         "@brief  Immutable bundle of intrinsic magnetic properties.\n"

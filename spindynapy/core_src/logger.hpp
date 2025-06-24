@@ -167,9 +167,9 @@ class PYTHON_API Logger {
      */
     PYTHON_API void flush() {
         std::lock_guard<std::mutex> lock(this->_mutex);
-        while (!_buffer.empty()) {
-            (*_out) << _buffer.front() << '\n';
-            _buffer.pop_front();
+        while (!this->_buffer.empty()) {
+            (*this->_out) << this->_buffer.front() << '\n';
+            this->_buffer.pop_front();
         }
         this->_out->flush();
     }
@@ -205,6 +205,9 @@ class PYTHON_API ScopedTimer {
     /** Logger POINTER used for output (may be null). (not owned) */
     Logger *_logger;
 
+    /** Whether to flush the logger immediately after each message. */
+    bool _always_flush;
+
     /** Start time recorded at construction. */
     std::chrono::high_resolution_clock::time_point _start;
 
@@ -216,10 +219,14 @@ class PYTHON_API ScopedTimer {
      * @param logger Logger instance to use (defaults to global singleton).
      * @returns void – constructs and records start time.
      */
-    PYTHON_API ScopedTimer(const std::string &name, Logger *logger = &Logger::instance())
+    PYTHON_API ScopedTimer(const std::string &name, bool always_flush = false, Logger *logger = &Logger::instance())
         : _name(name), _logger(logger), _start(std::chrono::high_resolution_clock::now()) {
-        if (_logger)
-            _logger->add("[START] " + _name);
+        if (this->_logger) {
+            this->_logger->add("[START] " + _name);
+            this->_always_flush = always_flush;
+            if (this->_always_flush)
+                this->_logger->flush(); // Flush immediately to ensure visibility
+        }
     }
 
     /**
@@ -228,10 +235,12 @@ class PYTHON_API ScopedTimer {
      * @returns void – mutates logger state by adding an `[END]` entry.
      */
     PYTHON_API ~ScopedTimer() {
-        if (_logger) {
+        if (this->_logger) {
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - _start).count();
-            _logger->add("  [END] " + _name + " | duration: " + std::to_string(dur) + " μs");
+            this->_logger->add("  [END] " + _name + " | duration: " + std::to_string(dur) + " μs");
+            if (this->_always_flush)
+                this->_logger->flush(); // Flush immediately to ensure visibility
         }
     }
 };
@@ -285,16 +294,34 @@ inline void pyBindLogger(py::module_ &module) {
      * @brief Adapter that exposes a Python file-like object as `std::ostream`.
      *
      * Holds a strong reference (`keep_alive`) so the Python object remains alive while C++
-     * writes through the STL interface (`os`).  Internally relies on
-     * `py::detail::pythonbuf` to bridge `ostream` and the Python `write()` protocol.
+     *   writes through the STL interface (`os`).  Internally relies on
+     *   `py::detail::pythonbuf` to bridge `ostream` and the Python `write()` protocol.
      *
      * @note Non-copyable, internal use only.
      */
     struct IOStreamAdapter {
-        py::object keep_alive;     ///< Python stream (ref-counted).
-        py::detail::pythonbuf buf; ///< pybind11 buffer wrapper.
-        std::ostream os;           ///< Facade over `buf`.
-        explicit IOStreamAdapter(const py::object &o) noexcept : keep_alive(o), buf(keep_alive), os(&buf) {}
+        py::object keep_alive;                      ///< Python stream (ref-counted).
+        std::unique_ptr<py::detail::pythonbuf> buf; ///< pybind11 buffer wrapper.
+        std::ostream os;                            ///< Facade over `buf`.
+        explicit IOStreamAdapter(const py::object &o) noexcept
+            : keep_alive(o), buf(std::make_unique<py::detail::pythonbuf>(keep_alive)), os(buf.get()) {}
+
+        /**
+         * @brief Destructor releases the Python buffer and resets the stream.
+         * @details If Python is not initialized, the buffer is leaked intentionally
+         *          to avoid dangling references.
+         */
+        ~IOStreamAdapter() noexcept {
+            os.rdbuf(nullptr);
+            if (Py_IsInitialized()) {
+                py::gil_scoped_acquire gil;
+                buf.reset();
+            } else {
+                [[maybe_unused]] auto l =
+                    buf.release(); // Release ownership if Python is not initialized
+                                   // (leakage is acceptable here as this is a singleton).
+            }
+        }
     };
 
     /** @brief Non-owning pointer type for exposing the C++ singleton to Python. */
@@ -431,8 +458,9 @@ inline void pyBindLogger(py::module_ &module) {
 
     py::class_<spindynapy::ScopedTimer>(logger_module, "ScopedTimer")
         .def(
-            py::init<const std::string &, spindynapy::Logger *>(),
+            py::init<const std::string &, bool, spindynapy::Logger *>(),
             py::arg("name"),
+            py::arg("always_flush") = false,
             py::arg("logger") = &Logger::instance()
         )
         .def(

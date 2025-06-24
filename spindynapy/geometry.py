@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 
 from .unit import XYZ, LatticeConstant
 
@@ -81,7 +82,18 @@ class NumpyGeometryManager:
         ny = int(size.y / dy) or 1
         nz = int(size.z / layer_height) or 1   # пересчитываем число слоёв
 
-        coords_list = []
+        coords_list, total_nodes, idx = [], nx * ny * nz, 0
+
+        update_every = max(1, min(1000, total_nodes // 100))
+
+        pbar = (
+            tqdm(
+                total=total_nodes,
+                desc="HCP lattice numpy generating",
+                unit="atom",
+                miniters=update_every,  # обновлять не чаще, чем нужно
+            )
+        )
 
         for k in range(nz):
             z = k * layer_height
@@ -98,5 +110,13 @@ class NumpyGeometryManager:
                     sz = initial_direction.z if initial_direction else np.random.uniform(-1, 1)
 
                     coords_list.append([x, y, z, sx, sy, sz, material_number])
+                    idx += 1
+
+                    if pbar and idx % update_every == 0:
+                        pbar.update(update_every)
+
+        if pbar:                               # добить хвост и закрыть
+            pbar.update(total_nodes - pbar.n)
+            pbar.close()
 
         return np.array(coords_list)
