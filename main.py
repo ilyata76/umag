@@ -21,6 +21,7 @@
     - сохранять каждый шаг:                     <...>
     - обновлять макроячейки каждый шаг:         <...>
 """
+
 import sys
 from enum import Enum
 from os import makedirs
@@ -41,7 +42,7 @@ from spindynapy.cartesian import (  # type: ignore # noqa
     Simulation,
     save_data,
     get_vvis_data,
-    get_shot_data
+    get_shot_data,
 )
 from spindynapy.unit import XYZ, nano, femto  # type: ignore # noqa
 from spindynapy.matlib import MaterialEnum, mat_lib, lattice_lib  # type: ignore # noqa
@@ -74,12 +75,16 @@ with ScopedTimer("Настройка окружения", always_flush=True, log
     material_registry = MaterialRegistry({MaterialEnum.COBALT.value: mat_lib[MaterialEnum.COBALT]})
     geometry = Geometry(moments=numpy_geometry, material_registry=material_registry)  # type:ignore
     solver = LLGSolver(strategy=SolverStrategy.HEUN)
-    interaction_registry = InteractionRegistry({
-        InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.4)),
-        InteractionEnum.DEMAGNETIZATION.value: DipoleDipoleInteraction(cutoff_radius=nano(10), strategy="cutoff"),
-        InteractionEnum.EXTERNAL.value: ExternalInteraction(1, 0, 0),
-        InteractionEnum.ANISOTROPY.value: AnisotropyInteraction()
-    })
+    interaction_registry = InteractionRegistry(
+        {
+            InteractionEnum.EXCHANGE.value: ExchangeInteraction(cutoff_radius=nano(0.4)),
+            InteractionEnum.DEMAGNETIZATION.value: DipoleDipoleInteraction(
+                cutoff_radius=nano(10), strategy="cutoff"
+            ),
+            InteractionEnum.EXTERNAL.value: ExternalInteraction(1, 0, 0),
+            InteractionEnum.ANISOTROPY.value: AnisotropyInteraction(),
+        }
+    )
     simulation = Simulation(
         geometry=geometry,
         solver=solver,
@@ -89,12 +94,11 @@ with ScopedTimer("Настройка окружения", always_flush=True, log
     )
 
 with ScopedTimer("ПОЛНАЯ СИМУЛЯЦИЯ", always_flush=True, logger=logger):
-    steps, save_every_step, update_macrocells_every_step = 15, 100, 1
+    steps, save_every_step, update_macrocells_every_step = 2, 1, 1
 
     for i in range(1, steps + 1):
         simulation.simulate_one_step(
-            save_step=(i % save_every_step == 0),
-            update_macrocells=(i % update_macrocells_every_step == 0)
+            save_step=(i % save_every_step == 0), update_macrocells=(i % update_macrocells_every_step == 0)
         )
 
     # simulation.simulate_many_steps(
@@ -102,3 +106,13 @@ with ScopedTimer("ПОЛНАЯ СИМУЛЯЦИЯ", always_flush=True, logger=lo
     #     save_every_step=save_every_step,
     #     update_macrocells_every_step=update_macrocells_every_step
     # )
+
+    for step_data in simulation.get_steps():
+        save_data(get_vvis_data(step_data), f"{path_dir}/sconfiguration-{step_data.step:08d}.vvis")
+        save_data(
+            get_shot_data(step_data, material_registry, interaction_registry),
+            f"{path_dir}/stepdata-{step_data.step:08d}.shot",
+        )
+        NumpyGeometryManager.save_geometry(
+            f"{path_dir}/geometry-{step_data.step:08d}", step_data.geometry.as_numpy()
+        )

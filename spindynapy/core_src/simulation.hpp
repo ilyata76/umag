@@ -111,7 +111,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
     void saveStep() {
         this->steps.push_back(SimulationStepData<CoordSystem>(
-            this->_current_time, this->_step, this->_geometry->clone(), this->_step_solver_data
+            this->_current_time, this->_step, this->_geometry->clone(false, true), this->_step_solver_data
         ));
     }
 
