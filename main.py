@@ -63,6 +63,7 @@ makedirs(path_dir, exist_ok=True)
 logger.set_stream(sys.stdout)
 
 with ScopedTimer("Настройка окружения", always_flush=True, logger=logger):
+    mat_lib[MaterialEnum.COBALT].exchange_constant_J = 5.5e-21
     numpy_geometry = NumpyGeometryManager.generate_hcp_monomaterial_parallelepiped(
         lattice_constant=lattice_lib[MaterialEnum.COBALT],
         size=XYZ(nano(5.0), nano(5.0), nano(5.0)),

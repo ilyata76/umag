@@ -687,11 +687,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         auto cloned = std::make_unique<Geometry>(cloned_moments, this->macrocell_size);
         if (share_cache) {
             cloned->shareMomentsIndexCache(this->_moment_index_cache);
-            cloned->shareMacrocellCache(
-                this->_macrocell_index_cache,
-                this->_macrocells,
-                this->_spin2cell
-            );
+            cloned->shareMacrocellCache(this->_macrocell_index_cache, this->_macrocells, this->_spin2cell);
         }
         return cloned;
     }

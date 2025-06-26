@@ -137,6 +137,8 @@ class UniaxialAnisotropy : public Anisotropy {
  * @param atomic_magnetic_saturation_absolute Absolute magnetic saturation (A·m²) – derived from
  * @param exchange_monomaterial_prefix Exchange monomaterial prefix (T) – derived from the exchange constant
  *      for a single material (no interface).
+ *
+ * @warning Properties must be recalculated after changing any of the parameters.  
  */
 class Material {
   public:
@@ -149,7 +151,7 @@ class Material {
     double unit_cell_size;                           ///< Edge length of unit cell (m).
     double atom_cell_size;                           ///< Edge length of atomic cell (m).
 
-    //
+    // calculated properties V V V
 
     double atomic_magnetic_saturation_absolute; ///< μ_s = M_s·μ_B      [A·m²]
     double exchange_monomaterial_prefix;        ///< C   = J / μ_s      [T]
@@ -184,9 +186,7 @@ class Material {
           damping_constant(damping_constant),
           unit_cell_size(unit_cell_size),
           atom_cell_size(atom_cell_size) {
-        this->atomic_magnetic_saturation_absolute =
-            atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        this->exchange_monomaterial_prefix = exchange_constant_J / this->atomic_magnetic_saturation_absolute;
+        this->recalculateProperties();
     };
 
     /**
@@ -227,6 +227,13 @@ class Material {
      * @returns `true` if materials match.
      */
     bool operator==(const Material &other) const { return material_number == other.material_number; }
+
+    void recalculateProperties() {
+        this->atomic_magnetic_saturation_absolute =
+            this->atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        this->exchange_monomaterial_prefix =
+            this->exchange_constant_J / this->atomic_magnetic_saturation_absolute;
+    }
 };
 
 /**
@@ -765,17 +772,31 @@ inline void pyBindTypes(py::module_ &module) {
                     "@returns `regnum` unique number.")
         )
         .def_readwrite("material_number", &Material::material_number)
-        .def_readwrite("exchange_constant_J", &Material::exchange_constant_J)
-        .def_readwrite(
-            "atomic_magnetic_saturation_magnetization", &Material::atomic_magnetic_saturation_magnetization
+        .def_property(
+            "exchange_constant_J",
+            [](const Material &self) { return self.exchange_constant_J; },
+            [](Material &self, double J) {
+                self.exchange_constant_J = J;
+                self.recalculateProperties();
+            },
+            py::doc("Exchange constant (J). Triggers recomputation of derived fields.")
+        )
+        .def_property(
+            "atomic_magnetic_saturation_magnetization",
+            [](const Material &self) { return self.atomic_magnetic_saturation_magnetization; },
+            [](Material &self, double muB) {
+                self.atomic_magnetic_saturation_magnetization = muB;
+                self.recalculateProperties();
+            },
+            py::doc("Saturation moment (μ_B per atom). Triggers recomputation of derived fields.")
         )
         .def_readwrite("anisotropy", &Material::anisotropy)
         .def_readwrite("gyromagnetic_ratio", &Material::gyromagnetic_ratio)
         .def_readwrite("damping_constant", &Material::damping_constant)
         .def_readwrite("unit_cell_size", &Material::unit_cell_size)
         .def_readwrite("atom_cell_size", &Material::atom_cell_size)
-        .def_readwrite("atomic_magnetic_saturation_absolute", &Material::atomic_magnetic_saturation_absolute)
-        .def_readwrite("exchange_monomaterial_prefix", &Material::exchange_monomaterial_prefix)
+        .def_readonly("atomic_magnetic_saturation_absolute", &Material::atomic_magnetic_saturation_absolute)
+        .def_readonly("exchange_monomaterial_prefix", &Material::exchange_monomaterial_prefix)
         .doc() =
         "@class  Material\n"
         "@brief  Immutable bundle of intrinsic magnetic properties.\n"
