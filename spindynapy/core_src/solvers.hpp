@@ -31,7 +31,7 @@
  * - `OMPFieldUpdater` – OpenMP-based field updater implementation
  *
  * - Python binding macros: `SOLVER_TEMPLATE_BINDINGS`, `SOLVERDATA_TEMPLATE_BINDINGS`,
- * `FIELDUPDATER_TEMPLATE_BINDINGS`
+ *   `FIELDUPDATER_TEMPLATE_BINDINGS`
  * - Python submodule binder: `pyBindSolvers()`
  *
  * @note All units are SI. Solver classes mutate geometry in-place.
@@ -43,6 +43,7 @@
 #include "constants.hpp"
 #include "geometries.hpp"
 #include "interactions.hpp"
+#include "logger.hpp"
 #include "registries.hpp"
 #include "types.hpp"
 
@@ -312,6 +313,9 @@ class PYTHON_API OMPFieldUpdater : public AbstractFieldUpdater {
         AbstractInteraction *interaction,
         MaterialRegistry &material_registry
     ) {
+        SCOPED_LOG_TIMER_DEBUG(
+            "│  ├─ Calculate effective fields and energies for interaction " + interaction->getName()
+        );
         // --- предсоздать буфферы ---
 
         size_t moments_size = geometry.size(); // Размер системы
@@ -369,6 +373,7 @@ class PYTHON_API OMPFieldUpdater : public AbstractFieldUpdater {
         AbstractInteractionRegistry &interaction_registry,
         MaterialRegistry &material_registry
     ) override {
+        SCOPED_LOG_TIMER_DEBUG("├─ Calculate Effective Fields and Energies");
         size_t moments_size = geometry.size();                      // Размер системы
         this->_step_data.clear(moments_size, interaction_registry); // Занулить буфер
         this->_step_data.correct(moments_size, interaction_registry); // Не потерять входящие изменения
@@ -540,6 +545,7 @@ class PYTHON_API LLGSolver : public AbstractSolver {
     virtual std::vector<Eigen::Vector3d> calculateLLGMomentsChange(
         IGeometry<NamespaceCoordSystem> &geometry, AbstractSolverData &data
     ) {
+        SCOPED_LOG_TIMER_DEBUG("├─ Calculate LLG moments change (all spins)");
         auto moments_size = geometry.size();
         std::vector<Eigen::Vector3d> result;
         result.resize(moments_size, Eigen::Vector3d::Zero());
@@ -568,6 +574,7 @@ class PYTHON_API LLGSolver : public AbstractSolver {
     virtual void updateMomentsInGeometry(
         IGeometry<NamespaceCoordSystem> &geometry, std::vector<Eigen::Vector3d> &moment_changes, double dt
     ) {
+        SCOPED_LOG_TIMER_DEBUG("├─ Update moments in geometry (all spins)");
         auto moments_size = geometry.size();
         if (moment_changes.size() != moments_size) {
             throw std::invalid_argument("Invalid moment changes size");
@@ -598,6 +605,7 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         MaterialRegistry &material_registry,
         double dt
     ) {
+        SCOPED_LOG_TIMER_DEBUG("EULER STEP");
         auto solver_data =
             this->_field_updater->calculateFields(geometry, interaction_registry, material_registry);
         auto moments_changes = this->calculateLLGMomentsChange(geometry, solver_data);
@@ -624,10 +632,11 @@ class PYTHON_API LLGSolver : public AbstractSolver {
         MaterialRegistry &material_registry,
         double dt
     ) {
+        SCOPED_LOG_TIMER_DEBUG("HEUN STEP");
         // рассчитать поля и изменения для предиктора
         auto predictor_data =
             this->_field_updater->calculateFields(geometry, interaction_registry, material_registry);
-        auto predictor_geometry = geometry.clone();
+        auto predictor_geometry = geometry.clone(true);
         auto predictor_moments_changes = this->calculateLLGMomentsChange(geometry, predictor_data);
 
         // рассчитать новое направление спина (predictor_geometry изменилась)

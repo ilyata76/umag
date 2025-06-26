@@ -41,6 +41,13 @@ template <CoordSystemConcept CoordSystem> class PYTHON_API IInteraction {
     // деструктор
     virtual ~IInteraction() = default;
 
+    // предподготовка взаимодействия (например, кэширование соседей) (НЕ НАДЕЯТЬСЯ НА ИСПОЛЬЗОВАНИЕ
+    //   ПОВСЕМЕСТНО, может быть пропущено где-либо)
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<CoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) = 0;
+
     // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API virtual EffectiveField calculateFieldContribution(
         size_t moment_index, IGeometry<CoordSystem> &geometry, MaterialRegistry &material_registry
@@ -101,14 +108,24 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
     // базовый конструктор
     PYTHON_API ExchangeInteraction(double cutoff_radius) : _cutoff_radius(cutoff_radius) {};
 
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<NamespaceCoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) override {
+        size_t moments_size = geometry.size();
+        for (size_t i = 0; i < moments_size; ++i) {
+            // TODO: сделать это на стороне prepare() геометрии
+            geometry.getNeighbors(i, this->_cutoff_radius);
+        }
+        return;
+    };
+
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
     PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
         const override {
         const auto &current_material = moment.getMaterial();
         const auto &direction = moment.getDirection().asVector();
-        const auto current_moment_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -current_moment_norm / 2 *
+        return -0.5 * current_material.atomic_magnetic_saturation_absolute *
                direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
@@ -117,21 +134,17 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
     calculateFieldContribution(size_t moment_index, IGeometry<NamespaceCoordSystem> &geometry, MaterialRegistry &)
         const override {
         EffectiveField exchange_field = EffectiveField::Zero();
-        auto &current_moment = geometry[moment_index];
-        auto &current_material = current_moment.getMaterial();
-
-        // величина магнитного момента
-        auto atomic_magnetic_moments_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        const auto GENERALIZED_PREFIX = current_material.exchange_constant_J / atomic_magnetic_moments_norm;
+        auto &current_material = geometry[moment_index].getMaterial();
 
         auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
         for (size_t neighbor_index : neighbor_indices) {
-            exchange_field += (geometry[neighbor_index].getMaterial() == current_material
-                                   ? GENERALIZED_PREFIX
-                                   : GENERALIZED_PREFIX /* тут можно будет интерфейс использовать */
-                              ) *
-                              geometry[neighbor_index].getDirection().asVector();
+            exchange_field +=
+                (geometry[neighbor_index].getMaterial() == current_material
+                     ? current_material.exchange_monomaterial_prefix
+                     : current_material
+                           .exchange_monomaterial_prefix /* тут можно будет интерфейс использовать */
+                ) *
+                geometry[neighbor_index].getDirection().asVector();
         }
         return exchange_field;
     }
@@ -159,6 +172,13 @@ class PYTHON_API ExternalInteraction : public AbstractInteraction {
     PYTHON_API ExternalInteraction(const Eigen::Vector3d &external_field) : external_field(external_field) {};
     // конструктор по умолчанию
     PYTHON_API ExternalInteraction(double sx, double sy, double sz) : external_field(sx, sy, sz) {};
+
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<NamespaceCoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) override {
+        return;
+    };
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
     PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
@@ -202,6 +222,15 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
   public:
     // конструктор по умолчанию
     PYTHON_API AnisotropyInteraction() {};
+
+    // предподготовка взаимодействия (например, кэширование соседей) (НЕ НАДЕЯТЬСЯ НА ИСПОЛЬЗОВАНИЕ
+    //  ПОВСЕМЕСТНО, может быть пропущено где-либо)
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<NamespaceCoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) override {
+        return;
+    };
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
     PYTHON_API double calculateEnergy(NamespaceCoordSystem::Moment &moment, EffectiveField &field)
@@ -306,6 +335,20 @@ class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
         if (strategy != "cutoff" && strategy != "macrocells") {
             throw std::invalid_argument("Invalid strategy string");
         }
+    };
+
+    // предподготовка взаимодействия (например, кэширование соседей) (НЕ НАДЕЯТЬСЯ НА ИСПОЛЬЗОВАНИЕ
+    //  ПОВСЕМЕСТНО, может быть пропущено где-либо)
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<NamespaceCoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) override {
+        size_t moments_size = geometry.size();
+        for (size_t i = 0; i < moments_size; ++i) {
+            // TODO: сделать это на стороне prepare() геометрии
+            geometry.getNeighbors(i, this->_cutoff_radius);
+        }
+        return;
     };
 
     // посчитать энергию взаимодействия между моментом и приложенным эффективным полем
@@ -428,7 +471,7 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
  *               "Create ThermalInteraction with temperature [K], time step [s], and optional seed (0 uses "
  *              "random device)."
  */
-class PYTHON_API ThermalInteraction final : public AbstractInteraction {
+class PYTHON_API ThermalInteraction : public AbstractInteraction {
   private:
     double _temperature;       // [K]
     double _dt;                // численный шаг [s]
@@ -445,6 +488,15 @@ class PYTHON_API ThermalInteraction final : public AbstractInteraction {
             _rng.seed(seed);
         }
     }
+
+    // предподготовка взаимодействия (например, кэширование соседей) (НЕ НАДЕЯТЬСЯ НА ИСПОЛЬЗОВАНИЕ
+    //  ПОВСЕМЕСТНО, может быть пропущено где-либо)
+    PYTHON_API virtual void prepare(
+        [[maybe_unused]] IGeometry<NamespaceCoordSystem> &geometry,
+        [[maybe_unused]] MaterialRegistry &material_registry
+    ) override {
+        return;
+    };
 
     // посчитать вклад в эффективное поле на моменте от взаимодействия в геометрии
     PYTHON_API EffectiveField calculateFieldContribution(
@@ -523,6 +575,13 @@ using AbstractInteractionRegistry = PYTHON_API InteractionRegistry<NamespaceCoor
             py::arg("moment"),                                                                               \
             py::arg("field"),                                                                                \
             py::doc("посчитать энергию взаимодействия между моментом и приложенным эффективным полем")       \
+        )                                                                                                    \
+        .def(                                                                                                \
+            "prepare",                                                                                       \
+            &cls::prepare,                                                                                   \
+            py::arg("geometry"),                                                                             \
+            py::arg("material_registry"),                                                                    \
+            py::doc("предподготовка взаимодействия (например, кэширование соседей)")                         \
         )                                                                                                    \
         .def("get_name", &cls::getName, py::doc("получить название взаимодействия"))
 

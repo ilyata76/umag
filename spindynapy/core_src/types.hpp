@@ -134,6 +134,9 @@ class UniaxialAnisotropy : public Anisotropy {
  * @param damping_constant Damping constant (dimensionless) – describes energy dissipation in the system.
  * @param anisotropy Anisotropy instance (optional, Anisotropy class) – describes the material's magnetic
  *   anisotropy.
+ * @param atomic_magnetic_saturation_absolute Absolute magnetic saturation (A·m²) – derived from
+ * @param exchange_monomaterial_prefix Exchange monomaterial prefix (T) – derived from the exchange constant
+ *      for a single material (no interface).
  */
 class Material {
   public:
@@ -145,6 +148,11 @@ class Material {
     double damping_constant;                         ///< Gilbert damping α.
     double unit_cell_size;                           ///< Edge length of unit cell (m).
     double atom_cell_size;                           ///< Edge length of atomic cell (m).
+
+    //
+
+    double atomic_magnetic_saturation_absolute; ///< μ_s = M_s·μ_B      [A·m²]
+    double exchange_monomaterial_prefix;        ///< C   = J / μ_s      [T]
 
     /**
      * @brief Construct a fully-specified material.
@@ -175,7 +183,11 @@ class Material {
           gyromagnetic_ratio(gyromagnetic_ratio),
           damping_constant(damping_constant),
           unit_cell_size(unit_cell_size),
-          atom_cell_size(atom_cell_size) {};
+          atom_cell_size(atom_cell_size) {
+        this->atomic_magnetic_saturation_absolute =
+            atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        this->exchange_monomaterial_prefix = exchange_constant_J / this->atomic_magnetic_saturation_absolute;
+    };
 
     /**
      * @brief Registry id accessor.
@@ -762,6 +774,8 @@ inline void pyBindTypes(py::module_ &module) {
         .def_readwrite("damping_constant", &Material::damping_constant)
         .def_readwrite("unit_cell_size", &Material::unit_cell_size)
         .def_readwrite("atom_cell_size", &Material::atom_cell_size)
+        .def_readwrite("atomic_magnetic_saturation_absolute", &Material::atomic_magnetic_saturation_absolute)
+        .def_readwrite("exchange_monomaterial_prefix", &Material::exchange_monomaterial_prefix)
         .doc() =
         "@class  Material\n"
         "@brief  Immutable bundle of intrinsic magnetic properties.\n"

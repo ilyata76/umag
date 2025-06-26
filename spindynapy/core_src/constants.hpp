@@ -27,7 +27,20 @@
 
 namespace py = pybind11;
 
+/**
+ * @def PYTHON_API
+ * @brief Macro to control visibility of symbols in the Python API.
+ *
+ * This macro is used to mark functions and constants that should be exported
+ *   to the Python module.
+ */
 #define PYTHON_API [[]]
+
+/**
+ * @def _CONCAT
+ * @brief Concatenate two identifiers into a single one.
+ */
+#define _CONCAT(a, b) a##b
 
 namespace PYTHON_API spindynapy {
 

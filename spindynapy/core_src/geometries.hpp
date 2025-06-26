@@ -11,6 +11,7 @@
  *  Геометрия также может поставлять ограниченное количество обсчитываемых параметров.
  */
 
+#include "logger.hpp"
 #include "registries.hpp"
 #include "types.hpp"
 
@@ -137,7 +138,7 @@ class PYTHON_API IGeometry : virtual public IMacrocellManager<CoordSystem> {
     PYTHON_API virtual MomentsContainer<CoordSystem> getMoments() const = 0;
 
     // предподготовка геометрии (TODO убрать)
-    virtual void prepareData() = 0;
+    virtual void prepare() = 0;
 
     // взять момент по индексу (TODO добавить .at(index))
     PYTHON_API virtual CoordSystem::Moment &operator[](size_t index) = 0;
@@ -149,7 +150,7 @@ class PYTHON_API IGeometry : virtual public IMacrocellManager<CoordSystem> {
     PYTHON_API virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) = 0;
 
     // клонировать геометрию, создав новый объект (TODO заменить на конструктор копирования)
-    virtual std::unique_ptr<IGeometry<CoordSystem>> clone() const = 0;
+    virtual std::unique_ptr<IGeometry<CoordSystem>> clone(bool share_cache = false) const = 0;
 
     // ---- ИТЕРАТОР ----
     // итератор по моментам для обхода
@@ -212,13 +213,13 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
     MomentsContainer<NamespaceCoordSystem> *_moments;
     // кэш соседей (включая свою) - индексов макроячеек с радиусом обрезки
     // (индекс макроячейки, радиус обрезки)
-    MacrocellIndexCache _macrocell_index_cache;
+    std::shared_ptr<MacrocellIndexCache> _macrocell_index_cache;
     // массив макроячеек (индекс макроячейки -> макроячейка)
     // _macrocells[cell_index] = macrocell meta info
-    std::vector<NamespaceMacroCell> _macrocells;
+    std::shared_ptr<std::vector<NamespaceMacroCell>> _macrocells;
     // карта (индекс спина -> индекс макроячейки (через индекс массива))
     // _spin2cell[spin_index] = cell index for _macrocells
-    std::vector<size_t> _spin2cell;
+    std::shared_ptr<std::vector<size_t>> _spin2cell;
 
     // мьютекс для защиты разделяемых данных (_spin2cell, _macrocells)
     mutable std::shared_mutex _mutex;
@@ -230,12 +231,14 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
   protected:
     // очистить макроячейки (НЕ ЗАЩИЩЁН МЬЮТЕКСОМ)
     virtual void clearMacrocellsImpl() override {
-        this->_macrocells.clear();
-        this->_spin2cell.clear();
+        SCOPED_LOG_TIMER_DEBUG("│  ├─ Clearing macrocells");
+        this->_macrocells->clear();
+        this->_spin2cell->clear();
     }
 
     // создать макроячейки (обнуляя предыдущие) (НЕ ЗАЩИЩЁН МЬЮТЕКСОМ)
     virtual void createMacrocellsImpl() override {
+        SCOPED_LOG_TIMER_DEBUG("│  ├─ Creating macrocells");
         // если указатель на моменты не нулевой и массив моментов не пуст
         if (!this->_moments || this->_moments->empty()) {
             this->clearMacrocellsImpl();
@@ -275,7 +278,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         size_t cell_idx = 0;
 
         // запись по индексу будет
-        this->_spin2cell.resize(num_spins);
+        this->_spin2cell->resize(num_spins);
 
         // Карта для группировки индексов (индекс_ячейки, индексы_спинов)
         std::map<size_t, std::vector<size_t>> spins_by_cell_indicies;
@@ -295,14 +298,14 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
             // алгоритм линеаризации трёхмерных индексов в ячеечный индекс
             cell_idx = ix + iy * nx + iz * nx * ny;
             // сохраним, что за текущим спином стоит посчитанная ячейка
-            this->_spin2cell[spin_idx] = cell_idx;
+            this->_spin2cell->at(spin_idx) = cell_idx;
             // сохраним в карте, что текущий спин относится к cell_idx
             spins_by_cell_indicies[cell_idx].push_back(spin_idx);
         }
 
         // очищаем макроячейки для предвариельной
-        this->_macrocells = {};
-        this->_macrocells.reserve(num_cells);
+        this->_macrocells = std::make_shared<std::vector<NamespaceMacroCell>>();
+        this->_macrocells->reserve(num_cells);
 
         // для каждой макроячейки k
         for (size_t k = 0; k < num_cells; ++k) {
@@ -311,12 +314,12 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 // и записываем (передаём полностью) предсозданную ячейку в финальный список
                 MacroCell<NamespaceCoordSystem> new_cell;
                 new_cell.moment_indices = spins_by_cell_indicies[k];
-                this->_macrocells.push_back(std::move(new_cell));
+                this->_macrocells->push_back(std::move(new_cell));
 
                 // в конечном итоге, записываем за каждым из спинов из карты его ячейку
-                auto cell_index = this->_macrocells.size() - 1;
+                auto cell_index = this->_macrocells->size() - 1;
                 for (size_t spin_idx : spins_by_cell_indicies[k]) {
-                    this->_spin2cell[spin_idx] = cell_index;
+                    this->_spin2cell->at(spin_idx) = cell_index;
                 }
             }
         };
@@ -327,7 +330,8 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
     ) {
         MomentsContainer<CartesianCoordSystem> moments_from_macrocells(macro_indexes.size(), nullptr);
         for (size_t macro_index = 0; macro_index < macro_indexes.size(); ++macro_index) {
-            moments_from_macrocells[macro_index] = this->_macrocells[macro_indexes[macro_index]].avg_moment;
+            moments_from_macrocells[macro_index] =
+                this->_macrocells->at(macro_indexes[macro_index]).avg_moment;
         }
         return moments_from_macrocells;
     }
@@ -336,7 +340,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
     virtual MomentsContainer<CartesianCoordSystem> getFromCacheImpl(std::pair<size_t, double> cache_key
     ) override {
         // получаем список "соседних" макроячеек в радиусе обрезки
-        auto macro_indexes = this->_macrocell_index_cache.get(cache_key);
+        auto macro_indexes = this->_macrocell_index_cache->get(cache_key);
         // и возвращаем список моментов из индексов макроячеек в радиусе обрезки
         return this->MomentsFromMacrocellsImpl(macro_indexes);
     };
@@ -347,7 +351,11 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
 
     // полноценный конструктор (принимает указатель на контейнер моментов и размер макроячейки для разбиения)
     MacrocellManager(MomentsContainer<NamespaceCoordSystem> *moments, double macrocell_size)
-        : _moments(moments), macrocell_size(macrocell_size) {
+        : _moments(moments),
+          _macrocell_index_cache(std::make_shared<MacrocellIndexCache>()),
+          _macrocells(std::make_shared<std::vector<NamespaceMacroCell>>()),
+          _spin2cell(std::make_shared<std::vector<size_t>>()),
+          macrocell_size(macrocell_size) {
         if (macrocell_size <= 0) {
             throw std::invalid_argument("Macrocell size must be positive");
         }
@@ -356,27 +364,38 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
     // получить конейтнер макроячейк
     PYTHON_API virtual const std::vector<NamespaceMacroCell> &getMacrocells() override {
         std::shared_lock lock(_mutex);
-        if (this->_macrocells.empty()) {
+        if (this->_macrocells->empty()) {
             throw std::runtime_error("Macrocells are not created. Call prepareData() first.");
         }
-        return this->_macrocells;
+        return *this->_macrocells.get();
     };
 
     // получить макроячейку по индексу относящегося к ней момента (рейзит ошибку, если не совпадают размеры)
     PYTHON_API virtual size_t getMacrocellIndexBySpin(size_t spin_index) override {
         std::shared_lock lock(_mutex);
-        if (spin_index >= this->_spin2cell.size()) {
-            throw std::out_of_range(std::format("Spin index out of range (<{}>)", this->_spin2cell.size()));
+        if (spin_index >= this->_spin2cell->size()) {
+            throw std::out_of_range(std::format("Spin index out of range (<{}>)", this->_spin2cell->size()));
         }
-        return this->_spin2cell[spin_index];
+        return this->_spin2cell->at(spin_index);
     };
 
     // создать макроячейки, если они не созданы (или насильно пересоздать)
     PYTHON_API virtual void createMacrocellsIfNotCreated(bool recreate = false) override {
         std::unique_lock lock(_mutex);
-        if (this->_macrocells.empty() || recreate) {
+        if (this->_macrocells->empty() || recreate) {
             this->createMacrocellsImpl(); // создать макроячейки, поделив спины
         }
+    };
+
+    void shareMacrocellCache(
+        std::shared_ptr<MacrocellIndexCache> macrocell_index_cache,
+        std::shared_ptr<std::vector<NamespaceMacroCell>> macrocells,
+        std::shared_ptr<std::vector<size_t>> spin2cell
+    ) {
+        std::unique_lock lock(_mutex);
+        this->_macrocell_index_cache = macrocell_index_cache;
+        this->_macrocells = macrocells;
+        this->_spin2cell = spin2cell;
     };
 
     virtual double getMacrocellSize() const override { return this->macrocell_size; };
@@ -397,7 +416,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
 
         // ---- проверяем кэш ----
         auto cache_key = std::make_pair(index, cutoff_radius);
-        if (this->_macrocell_index_cache.has(cache_key)) {
+        if (this->_macrocell_index_cache->has(cache_key)) {
             return this->getFromCacheImpl(cache_key);
         }
 
@@ -407,7 +426,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         std::unique_lock write_lock(_mutex);
 
         // ---- проверяем кэш (могли записать за время) ----
-        if (this->_macrocell_index_cache.has(cache_key)) {
+        if (this->_macrocell_index_cache->has(cache_key)) {
             return this->getFromCacheImpl(cache_key);
         }
 
@@ -424,29 +443,30 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
 
         // если расстояние от момента до центра макроячейки меньше радиуса обрезки,
         // то сохраняем в "соседей" индекс ячейки
-        for (size_t i = 0; i < _macrocells.size(); ++i) {
+        for (size_t i = 0; i < _macrocells->size(); ++i) {
             if (my_cell_index == i)
                 continue; // пропускаем свою ячейку
             const double distance =
-                target_coords.getDistanceFrom(_macrocells[i].avg_moment->getCoordinates());
+                target_coords.getDistanceFrom(_macrocells->at(i).avg_moment->getCoordinates());
             if (distance <= cutoff_radius) {
                 neighbors.push_back(i);
             }
         }
 
         // ---- сохраняем в кэш ----
-        this->_macrocell_index_cache.update(cache_key, neighbors);
+        this->_macrocell_index_cache->update(cache_key, neighbors);
 
         // и возвращаем список моментов из индексов макроячеек в радиусе обрезки
         MomentsContainer<CartesianCoordSystem> moments_from_macrocells(neighbors.size(), nullptr);
         for (size_t macro_index = 0; macro_index < neighbors.size(); ++macro_index) {
-            moments_from_macrocells[macro_index] = this->_macrocells[neighbors[macro_index]].avg_moment;
+            moments_from_macrocells[macro_index] = this->_macrocells->at(neighbors[macro_index]).avg_moment;
         }
         return moments_from_macrocells;
     };
 
     // обновить данные по макроячейкам (средний момент)
     PYTHON_API virtual void updateMacrocells() override {
+        SCOPED_LOG_TIMER_DEBUG("│  ├─ Updating macrocells");
         // блокировка мьютекса
         std::unique_lock lock(_mutex);
 
@@ -455,7 +475,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
         }
 
         // Итерируем по существующим ячейкам
-        for (auto &cell : this->_macrocells) {
+        for (auto &cell : *this->_macrocells) {
             size_t spin_count = cell.moment_indices.size();
             if (spin_count == 0)
                 continue; // Пропускаем пустые ячейки (их быть так-то не должно)
@@ -526,7 +546,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
     // контейнер моментов в декартовой системе координат
     MomentsContainer<NamespaceCoordSystem> _moments;
     // кэш для соседей-индексов в радиусе обрезки (индекс момента, радиус обрезки) = индексы соседей
-    MomentIndexCache _moment_index_cache;
+    std::shared_ptr<MomentIndexCache> _moment_index_cache;
 
     // мьютекс для защиты разделяемых данных
     mutable std::shared_mutex _mutex;
@@ -534,19 +554,24 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
   public:
     // конструктор изнутри системы
     PYTHON_API Geometry(const MomentsContainer<NamespaceCoordSystem> &moments, double macrocell_size = 1e-9)
-        : MacrocellManager(nullptr, macrocell_size), _moments(moments) {
+        : MacrocellManager(nullptr, macrocell_size),
+          _moments(moments),
+          _moment_index_cache(std::make_shared<MomentIndexCache>()) {
         MacrocellManager::_moments = &this->_moments; // заполнить указатель на массив моментов
     };
     // конструктор изнутри системы для rvalue
     PYTHON_API Geometry(MomentsContainer<NamespaceCoordSystem> &&moments, double macrocell_size = 1e-9)
-        : MacrocellManager(nullptr, macrocell_size), _moments(std::move(moments)) {
+        : MacrocellManager(nullptr, macrocell_size),
+          _moments(std::move(moments)),
+          _moment_index_cache(std::make_shared<MomentIndexCache>()) {
         MacrocellManager::_moments = &this->_moments; // заполнить указатель на массив моментов
     };
     // главный конструктор: из numpy массива; принимает регистр для проверки материалов, размер макроячейки
     PYTHON_API Geometry(
         const Eigen::MatrixXd &moments, MaterialRegistry &material_registry, double macrocell_size = 1e-9
     )
-        : MacrocellManager(nullptr, macrocell_size) {
+        : MacrocellManager(nullptr, macrocell_size),
+          _moment_index_cache(std::make_shared<MomentIndexCache>()) {
         //
         if (moments.cols() < 7) {
             throw std::invalid_argument("Expected 7 columns: [x, y, z, sx, sy, sz, material]");
@@ -575,7 +600,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
     };
 
     // предподготовка геометрии
-    virtual void prepareData() override {
+    virtual void prepare() override {
         std::unique_lock lock(_mutex); // мутирует _moments по указателю из менеджера
         this->createMacrocellsIfNotCreated(true); // создать макроячейки, поделив спины
         this->updateMacrocells();                 // посчитать их в первый раз
@@ -607,8 +632,8 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
 
         // ---- проверяем кэш ----
         auto cache_key = std::make_pair(index, cutoff_radius);
-        if (this->_moment_index_cache.has(cache_key)) {
-            return this->_moment_index_cache.get(cache_key);
+        if (this->_moment_index_cache->has(cache_key)) {
+            return this->_moment_index_cache->get(cache_key);
         }
 
         // ---- иначе честно считаем ----
@@ -625,7 +650,7 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         }
 
         // ---- сохраняем в кэш ----
-        this->_moment_index_cache.update(cache_key, neighbors);
+        this->_moment_index_cache->update(cache_key, neighbors);
 
         // возвращаем индексы соседей
         return neighbors;
@@ -645,8 +670,14 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
         return this->_moments.end();
     }
 
+    // установить разделяемый кэш (полезно для клонов)
+    void shareMomentsIndexCache(const std::shared_ptr<MomentIndexCache> &cache) {
+        std::unique_lock lock(this->_mutex);
+        _moment_index_cache = cache;
+    }
+
     // клонировать геометрию, создав новый объект
-    virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone() const override {
+    virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone(bool share_cache = false) const override {
         std::shared_lock lock(_mutex);
         MomentsContainer<NamespaceCoordSystem> cloned_moments;
         cloned_moments.reserve(this->_moments.size());
@@ -654,7 +685,14 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
             cloned_moments.push_back(moment->clone());
         }
         auto cloned = std::make_unique<Geometry>(cloned_moments, this->macrocell_size);
-        cloned->prepareData();
+        if (share_cache) {
+            cloned->shareMomentsIndexCache(this->_moment_index_cache);
+            cloned->shareMacrocellCache(
+                this->_macrocell_index_cache,
+                this->_macrocells,
+                this->_spin2cell
+            );
+        }
         return cloned;
     }
 

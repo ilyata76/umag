@@ -93,24 +93,20 @@ template <CoordSystemConcept CoordSystem> class Simulation {
     // была ли предпоготовка для обсчёта вкладов взаимодействий
     bool _system_prepared = false;
 
-    void makeEmptyStep() {
-        size_t moments_size = this->_geometry->size();
-        for (auto &[_, interaction] : *_interaction_registry) {
-            for (size_t i = 0; i < moments_size; ++i) {
-                interaction->calculateFieldContribution(i, *this->_geometry, *this->_material_registry);
+    void prepareSystem() {
+        SCOPED_LOG_TIMER_PRINT("Preparing system for simulation");
+        {
+            SCOPED_LOG_TIMER_DEBUG("├─ Preparing geometry");
+            this->_geometry->prepare();
+        }
+        {
+            SCOPED_LOG_TIMER_DEBUG("├─ Preparing interactions");
+            for (auto &[_, interaction] : *_interaction_registry) {
+                SCOPED_LOG_TIMER_DEBUG("│  ├─ Preparing interaction: " + interaction->getName());
+                interaction->prepare(*this->_geometry, *this->_material_registry);
             }
         }
-    }
-
-    void prepareGeometry() { this->_geometry->prepareData(); }
-
-    void prepareSystem() {
-        LOG_MSG_PRINT("Preparing geometry...");
-        this->prepareGeometry();
-        LOG_MSG_PRINT("preparing interactions ...");
-        this->makeEmptyStep();
         this->_system_prepared = true;
-        LOG_MSG_PRINT("!!! System has been prepared");
     }
 
     void saveStep() {

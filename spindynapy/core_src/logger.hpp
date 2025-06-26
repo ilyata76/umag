@@ -13,7 +13,8 @@
  * Exposed entities
  * - `spindynapy::Logger`      – global singleton for buffered logging.
  * - `spindynapy::ScopedTimer` – RAII helper that logs the execution time of a scope.
- * - Convenience macros: `LOG_MSG`, `LOG_MSG_PRINT`, `SCOPED_LOG_TIMER`, `SCOPED_LOG_TIMER_PRINT`.
+ * - Convenience macros: `LOG_MSG`, `LOG_MSG_PRINT`, `SCOPED_LOG_TIMER`, `SCOPED_LOG_TIMER_PRINT`,
+ *      `SCOPED_LOG_TIMER_DEBUG`
  * - Function `pyBindLogger()` that exports the facility to Python as sub‑module `core.logger`.
 
  * @note The logger is intended for debugging and profiling. It is **not** a persistent audit trail.
@@ -219,7 +220,9 @@ class PYTHON_API ScopedTimer {
      * @param logger Logger instance to use (defaults to global singleton).
      * @returns void – constructs and records start time.
      */
-    PYTHON_API ScopedTimer(const std::string &name, bool always_flush = false, Logger *logger = &Logger::instance())
+    PYTHON_API ScopedTimer(
+        const std::string &name, bool always_flush = false, Logger *logger = &Logger::instance()
+    )
         : _name(name), _logger(logger), _start(std::chrono::high_resolution_clock::now()) {
         if (this->_logger) {
             this->_logger->add("[START] " + _name);
@@ -238,7 +241,9 @@ class PYTHON_API ScopedTimer {
         if (this->_logger) {
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration_cast<std::chrono::microseconds>(end - _start).count();
-            this->_logger->add("  [END] " + _name + " | duration: " + std::to_string(dur) + " μs");
+            this->_logger->add(
+                "  [END] " + _name + " | duration: " + std::format(std::locale(""), "{:L}", dur) + " μs"
+            );
             if (this->_always_flush)
                 this->_logger->flush(); // Flush immediately to ensure visibility
         }
@@ -263,12 +268,25 @@ class PYTHON_API ScopedTimer {
 
 /** @brief Create a scoped timer named NAME.
  *  @param NAME Logical name of the timed scope. */
-#define SCOPED_LOG_TIMER(name) ::spindynapy::ScopedTimer timer(name, &Logger::instance());
+#define SCOPED_LOG_TIMER(name)                                                                               \
+    ::spindynapy::ScopedTimer _CONCAT(_scoped_timer_, __LINE__)(name, &Logger::instance());
+
+#ifdef DEBUG
+/** @brief Create a scoped timer named NAME.
+ *  @param NAME Logical name of the timed scope. */
+#define SCOPED_LOG_TIMER_DEBUG(name)                                                                         \
+    ::spindynapy::ScopedTimer _CONCAT(_scoped_timer_, __LINE__)(name, &Logger::instance());
+#else
+/** @brief Create a scoped timer named NAME.
+ *  @param NAME Logical name of the timed scope. */
+#define SCOPED_LOG_TIMER_DEBUG(name)                                                                         \
+    ::spindynapy::ScopedTimer _CONCAT(_scoped_timer_, __LINE__)(name, &Logger::instance());
+#endif
 
 /** @brief Create a scoped timer named NAME and flush when the scope ends.
  *  @param NAME Logical name of the timed scope. */
 #define SCOPED_LOG_TIMER_PRINT(name)                                                                         \
-    ::spindynapy::ScopedTimer timer(name, &Logger::instance());                                              \
+    ::spindynapy::ScopedTimer _CONCAT(_scoped_timer_, __LINE__)(name, &Logger::instance());                  \
     ::spindynapy::Logger::instance().flush();
 
 } // namespace spindynapy
