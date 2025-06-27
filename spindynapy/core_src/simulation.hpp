@@ -47,6 +47,32 @@ template <CoordSystemConcept CoordSystem> struct SimulationStepData : public Sol
         SolverData<CoordSystem> solver_data
     )
         : SolverData<CoordSystem>(solver_data), time(time), step(step), geometry(std::move(geometry)) {};
+
+    PYTHON_API Magnetization getMeanMagnetization() const {
+        size_t moments_size = this->geometry->size();
+        Eigen::Vector3d mean_magnetization = Eigen::Vector3d::Zero();
+        if (moments_size != 0) {
+            for (size_t i = 0; i < moments_size; ++i) {
+                mean_magnetization += this->geometry->operator[](i).getDirection().asVector();
+            }
+            mean_magnetization /= double(moments_size);
+        }
+        return mean_magnetization;
+    }
+
+    PYTHON_API double getMeanMagnetizationNorm() const { return this->getMeanMagnetization().norm(); }
+
+    PYTHON_API double getEnergy() const {
+        return std::accumulate(this->energies.begin(), this->energies.end(), 0.0);
+    }
+
+    PYTHON_API std::unordered_map<regnum, double> getEnergyByInteraction() const {
+        std::unordered_map<regnum, double> energy_by_interaction;
+        for (const auto &[reg, energies] : this->interaction_energies) {
+            energy_by_interaction[reg] = std::accumulate(energies.begin(), energies.end(), 0.0);
+        }
+        return energy_by_interaction;
+    }
 };
 
 namespace cartesian {
@@ -191,7 +217,7 @@ template <CoordSystemConcept CoordSystem> class Simulation {
 
 namespace cartesian {
 
-using Simulation = Simulation<NamespaceCoordSystem>;
+using AbstractSimulation = Simulation<NamespaceCoordSystem>;
 
 };
 
@@ -210,10 +236,10 @@ inline void pyBindSimulation(py::module_ &module) {
 
     using cartesian::AbstractGeometry;
     using cartesian::AbstractInteractionRegistry;
+    using cartesian::AbstractSimulation;
     using cartesian::AbstractSimulationStepData;
     using cartesian::AbstractSolver;
     using cartesian::AbstractSolverData;
-    using cartesian::Simulation;
 
     py::class_<AbstractSimulationStepData, AbstractSolverData>(cartesian, "SimulationStepData")
         .def_readonly("time", &AbstractSimulationStepData::time)
@@ -223,9 +249,29 @@ inline void pyBindSimulation(py::module_ &module) {
             [](const AbstractSimulationStepData &self) { return self.geometry.get(); },
             py::return_value_policy::reference_internal
         )
+        .def(
+            "get_mean_magnetization",
+            &AbstractSimulationStepData::getMeanMagnetization,
+            py::doc("Get the mean magnetization of the system at this step.")
+        )
+        .def(
+            "get_mean_magnetization_norm",
+            &AbstractSimulationStepData::getMeanMagnetizationNorm,
+            py::doc("Get the norm of the mean magnetization of the system at this step.")
+        )
+        .def(
+            "get_energy",
+            &AbstractSimulationStepData::getEnergy,
+            py::doc("Get the total energy of the system at this step.")
+        )
+        .def(
+            "get_energy_by_interaction",
+            &AbstractSimulationStepData::getEnergyByInteraction,
+            py::doc("Get the energy contributions by interaction type at this step.")
+        )
         .doc() = "Data structure holding simulation step information";
 
-    py::class_<Simulation>(cartesian, "Simulation")
+    py::class_<AbstractSimulation>(cartesian, "Simulation")
         .def(
             py::init<
                 std::shared_ptr<AbstractGeometry>,
@@ -239,24 +285,24 @@ inline void pyBindSimulation(py::module_ &module) {
             py::arg("interaction_registry"),
             py::arg("dt") = 1e-13
         )
-        .def("__str__", &Simulation::__str__)
+        .def("__str__", &AbstractSimulation::__str__)
         .def(
             "simulate_one_step",
-            &Simulation::simulateOneStep,
+            &AbstractSimulation::simulateOneStep,
             py::call_guard<py::gil_scoped_release>(),
             py::arg("save_step") = false,
             py::arg("update_macrocells") = true
         )
         .def(
             "simulate_many_steps",
-            &Simulation::simulateManySteps,
+            &AbstractSimulation::simulateManySteps,
             py::call_guard<py::gil_scoped_release>(),
             py::arg("steps"),
             py::arg("save_every_step") = 1,
             py::arg("update_macrocells_every_step") = 1
         )
-        .def("get_steps", &Simulation::getSteps, py::return_value_policy::reference)
-        .def("clear_steps", &Simulation::clearSteps)
+        .def("get_steps", &AbstractSimulation::getSteps, py::return_value_policy::reference)
+        .def("clear_steps", &AbstractSimulation::clearSteps)
         .doc() = "TODO";
 }
 

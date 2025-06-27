@@ -71,6 +71,13 @@ CPMAddPackage(
 )
 include_directories(${eigen_SOURCE_DIR})
 
+CPMAddPackage(
+    NAME fmt
+    GITHUB_REPOSITORY fmtlib/fmt
+    GIT_TAG 11.2.0
+)
+include_directories(${fmt_SOURCE_DIR})
+
 # Собираем все .hpp файлы
 file(GLOB HEADERS 
     "core_src/*.hpp"
@@ -95,7 +102,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     ${pybind11_SOURCE_DIR}
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module OpenMP::OpenMP_CXX)
+target_link_libraries(${PROJECT_NAME} PUBLIC eigen pybind11::module OpenMP::OpenMP_CXX fmt::fmt-header-only)
 
 # Включаем LTO для Release сборок через свойство цели (замена -flto)
 set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION True)

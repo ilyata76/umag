@@ -150,7 +150,8 @@ class PYTHON_API IGeometry : virtual public IMacrocellManager<CoordSystem> {
     PYTHON_API virtual std::vector<size_t> getNeighbors(size_t index, double cutoff_radius) = 0;
 
     // клонировать геометрию, создав новый объект (TODO заменить на конструктор копирования)
-    virtual std::unique_ptr<IGeometry<CoordSystem>> clone(bool share_cache = false, bool prepare = false) const = 0;
+    virtual std::unique_ptr<IGeometry<CoordSystem>> clone(bool share_cache = false, bool prepare = false)
+        const = 0;
 
     // ---- ИТЕРАТОР ----
     // итератор по моментам для обхода
@@ -677,7 +678,9 @@ class Geometry : public AbstractGeometry, public MacrocellManager {
     }
 
     // клонировать геометрию, создав новый объект
-    virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone(bool share_cache = false, bool prepare = false) const override {
+    virtual std::unique_ptr<IGeometry<NamespaceCoordSystem>> clone(
+        bool share_cache = false, bool prepare = false
+    ) const override {
         std::shared_lock lock(_mutex);
         MomentsContainer<NamespaceCoordSystem> cloned_moments;
         cloned_moments.reserve(this->_moments.size());

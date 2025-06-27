@@ -11,9 +11,9 @@ class NumpyGeometryManager:
     """
 
     @staticmethod
-    def save_geometry(name: str, geometry: np.typing.ArrayLike) -> None:
+    def save_geometry(path: str, geometry: np.typing.ArrayLike) -> None:
         """Сохранить геометрию в файл по пути name"""
-        np.save(f"{name}.npy", geometry)
+        np.save(f"{path}.npy", geometry)
 
     @staticmethod
     def load_geometry(name: str) -> np.typing.ArrayLike | None:

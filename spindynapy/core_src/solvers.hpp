@@ -712,7 +712,7 @@ class PYTHON_API LLGSolver : public AbstractSolver {
 
 /**
  * @def   SOLVER_TEMPLATE_BINDINGS
- * @brief PyBind11 boilerplate for exposing `update_moments`.
+ * @brief PyBind11 boilerplate for exposing Solver methods.
  */
 #define SOLVER_TEMPLATE_BINDINGS(cls)                                                                        \
     .def(                                                                                                    \
@@ -782,7 +782,7 @@ class PYTHON_API LLGSolver : public AbstractSolver {
 
 /**
  * @def   FIELDUPDATER_TEMPLATE_BINDINGS
- * @brief PyBind11 boilerplate for exposing `calculate_fields`.
+ * @brief PyBind11 boilerplate for exposing Updater methods.
  */
 #define FIELDUPDATER_TEMPLATE_BINDINGS(cls)                                                                  \
     .def(                                                                                                    \

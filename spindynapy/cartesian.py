@@ -20,31 +20,3 @@ from .core.registries import *  # type: ignore # noqa
 from .core.printer.cartesian import *  # type: ignore # noqa
 
 from .core import constants  # type: ignore # noqa
-
-
-def save_data(data: str, path: str) -> None:
-    """Сохранить данные в файл по пути path"""
-    with open(path, "w") as f:
-        f.write(data)
-
-
-def get_shot_data(
-    step_data: SimulationStepData,  # noqa
-    material_registry: MaterialRegistry | None = None,  # noqa
-    interaction_registry: InteractionRegistry | None = None,  # noqa
-    printer: AbstractPrinter | None = None,  # noqa
-) -> str:
-    """Получить данные в формате .shot для анализа (текстовый квази-дамп-файл)"""
-    if printer is None:
-        printer = SimulationPrinter()  # noqa
-    return printer.shot(step_data, material_registry, interaction_registry)
-
-
-def get_vvis_data(
-    step_data: SimulationStepData,  # noqa
-    printer: AbstractPrinter | None = None,  # noqa
-) -> str:
-    """Получить данные в формате .vvis для vis_mag(visualis)"""
-    if printer is None:
-        printer = SimulationPrinter(coordinates_precision=3, direction_precision=3)  # noqa
-    return printer.vvis(step_data)

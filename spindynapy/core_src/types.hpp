@@ -52,6 +52,9 @@ typedef short regnum;
 /** @brief  Vector representing the net effective magnetic field */
 using EffectiveField = Eigen::Vector3d;
 
+/** @brief  Alias for a magnetic moment vector */
+using Magnetization = Eigen::Vector3d;
+
 /** @brief  Contiguous array of effective fields (one per spin). */
 using EffectiveFieldVector = std::vector<EffectiveField>;
 
@@ -138,7 +141,7 @@ class UniaxialAnisotropy : public Anisotropy {
  * @param exchange_monomaterial_prefix Exchange monomaterial prefix (T) – derived from the exchange constant
  *      for a single material (no interface).
  *
- * @warning Properties must be recalculated after changing any of the parameters.  
+ * @warning Properties must be recalculated after changing any of the parameters.
  */
 class Material {
   public:

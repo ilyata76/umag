@@ -357,7 +357,6 @@ inline void pyBindLogger(py::module_ &module) {
     //  Create submodule
     // ---------------------------------------------------------------------
 
-    // -------- | LOGGER | --------
     py::module_ logger_module = module.def_submodule("logger");
 
     logger_module.doc() =
