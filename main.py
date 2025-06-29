@@ -1,31 +1,13 @@
 """
-Параметры геометрии:
-    - размер ячейки:                            <...>
-    - размер:                                   <...>
-    - материал:                                 <...>
-    - начальное направление:                    <...>
-
-Параметры решателя:
-    - стратегия:                                <...>
-    - шаг:                                      <...>
-
-Параметры взаимодействия:
-    - обмен:                                    <...>
-    - демагнетизация:                           <...>
-    - анизотропия:                              <...>
-    - внешнее поле:                             <...>
-
-Параметры симуляции:
-    - временной шаг:                            <...>
-    - шаги:                                     <...>
-    - сохранять каждый шаг:                     <...>
-    - обновлять макроячейки каждый шаг:         <...>
+TESTING PERFORMANCE SCRIPT
+5x5x5 COBALT
+BASE INTERACTIONS
 """
 
 import sys
 from enum import Enum
 from os import makedirs
-import numpy as np
+import numpy as np  # noqa
 
 from spindynapy.cartesian import (  # type: ignore # noqa
     MaterialRegistry,
@@ -43,7 +25,7 @@ from spindynapy.cartesian import (  # type: ignore # noqa
     SimulationPrinter,
     SimulationStepData,
 )
-from spindynapy.unit import XYZ, nano, femto  # type: ignore # noqa
+from spindynapy.unit import XYZ, nano, femto, LatticeConstant  # type: ignore # noqa
 from spindynapy.matlib import MaterialEnum, mat_lib, lattice_lib  # type: ignore # noqa
 from spindynapy.geometry import NumpyGeometryManager  # type: ignore # noqa
 from spindynapy.logger import ScopedTimer, logger
@@ -102,7 +84,7 @@ with ScopedTimer("Настройка окружения", always_flush=True, log
 
 
 with ScopedTimer("ПОЛНАЯ СИМУЛЯЦИЯ", always_flush=True, logger=logger):
-    steps, save_every_step, update_macrocells_every_step = 15, 100, 1
+    steps, save_every_step, update_macrocells_every_step = 1, 1, 1
 
     for i in range(1, steps + 1):
         simulation.simulate_one_step(
@@ -120,7 +102,10 @@ with ScopedTimer("СОХРАНЕНИЕ ДАННЫХ", always_flush=True, logger=
         save_data(
             printer.vvis(
                 step_data,
-                format="{material}\t0\t{coord_x:.3f}\t{coord_y:.3f}\t{coord_z:.3f}\t{dir_x:.3f}\t{dir_y:.3f}\t{dir_z:.3f}",
+                format=(
+                    "{material}\t0\t{coord_x:.3f}\t{coord_y:.3f}\t"
+                    "{coord_z:.3f}\t{dir_x:.3f}\t{dir_y:.3f}\t{dir_z:.3f}"
+                ),
                 print_header=True,
             ),
             filename=f"sconfiguration-{step_data.step:08d}.vvis",
@@ -135,8 +120,11 @@ with ScopedTimer("СОХРАНЕНИЕ ДАННЫХ", always_flush=True, logger=
     save_data(
         printer.time_series(
             simulation,
-            "{step}\t{sim_time:.3e}\t{full_energy:.3e}\t{magnetization:.3f}\t{magnetization_x:.3f}\t{magnetization_y:.3f}\t{magnetization_z:.3f}\t"
-            "{energy_0:+.5e}\t{energy_1:+.5e}\t{energy_2:+.5e}\t{energy_3:+.5e}"
+            (
+                "{step}\t{sim_time:.3e}\t{full_energy:.3e}\t"
+                "{magnetization:.3f}\t{magnetization_x:.3f}\t{magnetization_y:.3f}\t{magnetization_z:.3f}\t"
+                "{energy_0:+.5e}\t{energy_1:+.5e}\t{energy_2:+.5e}\t{energy_3:+.5e}"
+            ),
         ),
         filename="TS.txt",
     )

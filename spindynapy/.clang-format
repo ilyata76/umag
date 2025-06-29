@@ -1,31 +1,58 @@
-BasedOnStyle: LLVM  # style-guide
-IndentWidth: 4  # размер отступа в пробелах  для вложенных блоков кода
-TabWidth: 4  # ширина табуляции
-UseTab: Never  # всегда использовать пробелы вместо табов
-ColumnLimit: 110  # максимальная длина строки
+# Docs: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
 
-AlwaysBreakAfterReturnType: None  # запретить автоматический разрыв после return-типа
-PenaltyReturnTypeOnItsOwnLine: 100000  # высокое число «штрафа» за вынесенный return-type
+# ==============================================================================
+# Base Style Configuration
+# ==============================================================================
 
-AlwaysBreakAfterDefinitionReturnType: None
+BasedOnStyle: LLVM              # Inherit from LLVM base style
+IndentWidth: 4                  # Indentation width (in spaces)
+TabWidth: 4                     # Tab width (used for alignment)
+UseTab: Never                   # Always use spaces instead of tabs
+ColumnLimit: 110                # Maximum allowed line length (in characters)
 
-AllowShortFunctionsOnASingleLine: Inline  # короткие функции в одну строку (включая тело с {})
-AlignAfterOpenBracket: BlockIndent  # если переносить, то с новой строки с отступом
-BinPackArguments: false  # не запаковывать аргументы
-BinPackParameters: false  # не запаковывать аргументы при вызове
-PackConstructorInitializers: NextLine  # не запаковывать при конструкторах
+# ==============================================================================
+# Return Type Formatting
+# ==============================================================================
 
-AllowShortIfStatementsOnASingleLine: false  # короткий if без переноса строк
-AllowShortLoopsOnASingleLine: false  # короткие for/while в одну строку
-AllowShortCaseLabelsOnASingleLine: false  # короткие case-метки в switch в одну строку
-AllowAllArgumentsOnNextLine: true # Разрешить перенос всех аргументов на следующую строку
+AlwaysBreakAfterReturnType: None               # Do not always break after return type
+PenaltyReturnTypeOnItsOwnLine: 100000          # Strongly discourage breaking return type to its own line
+AlwaysBreakAfterDefinitionReturnType: None     # Same rule for function definitions
 
-SortIncludes: true  # автоматически сортировать #include
-IncludeBlocks: Regroup  # группировать #include по блокам
+# ==============================================================================
+# Short Functions and Blocks
+# ==============================================================================
 
-SpaceBeforeParens: ControlStatements  # пробел перед инструкциями типа (if, for, while)
-SpaceBeforeCpp11BracedList: true  # пробел перед скобка в modern c++ конструкциях
+AllowShortFunctionsOnASingleLine: Inline       # Allow short functions to fit in one line (with body)
+AllowShortIfStatementsOnASingleLine: false     # Require line break for all `if` statements
+AllowShortLoopsOnASingleLine: false            # Require line break for `for`, `while`, etc.
+AllowShortCaseLabelsOnASingleLine: false       # Require line break for `case` labels
+AllowAllArgumentsOnNextLine: true              # Allow breaking all arguments to the next line
 
-# DisableFormat: True
+# ==============================================================================
+# Bracket Alignment and Wrapping
+# ==============================================================================
 
-# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+AlignAfterOpenBracket: BlockIndent             # Indent arguments after an open bracket (function call/declaration)
+BinPackArguments: false                        # Do not pack multiple arguments per line in function calls
+BinPackParameters: false                       # Do not pack multiple parameters per line in declarations
+PackConstructorInitializers: NextLine          # Place each constructor initializer on a new line
+
+# ==============================================================================
+# Spacing Rules
+# ==============================================================================
+
+SpaceBeforeParens: ControlStatements           # Add space before parentheses in control statements only (if, for, while)
+SpaceBeforeCpp11BracedList: true               # Add space before brace-init lists (C++11 `{}` init)
+
+# ==============================================================================
+# Includes
+# ==============================================================================
+
+SortIncludes: true                             # Automatically sort `#include` directives
+IncludeBlocks: Regroup                         # Group includes into separate blocks (standard, system, project)
+
+# ==============================================================================
+# Special
+# ==============================================================================
+
+# DisableFormat: True                          # Can be enabled to disable formatting

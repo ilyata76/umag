@@ -1,6 +1,18 @@
 """
-Шорткат для импорта всех модулей в spindynapy.cartesian для декартовой системы координат.
-И для удобства, конечно. Из CORE
+Cartesian coordinate system shortcut imports.
+
+This module re-exports all core simulation components implemented
+  for the Cartesian coordinate system. It serves as a unified
+  entry point for accessing geometry, solvers, interactions,
+  registries, simulation drivers, and printer utilities.
+
+All imported components are pulled from the compiled C++ backend via pybind11 bindings.
+
+Usage:
+    from spindynapy.cartesian import Geometry, Anisotropy, LLGSolver, ...
+
+Note:
+    This module exists purely for ergonomic convenience and static typing.
 """
 
 from .core.types import Material, Anisotropy, UniaxialAnisotropy  # type: ignore # noqa

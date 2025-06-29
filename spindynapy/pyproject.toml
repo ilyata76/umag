@@ -1,3 +1,11 @@
+# ===================================================================
+#  Python Build Configuration for SpinDynaPy
+# ===================================================================
+
+# -------------------------------------------------------------------
+#  Backend & Dependencies for building the C++ extension
+# -------------------------------------------------------------------
+
 [build-system]
 requires = [
     "setuptools>=42",
@@ -10,13 +18,21 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
+# -------------------------------------------------------------------
+#  Project Metadata
+# -------------------------------------------------------------------
+
 [project]
-name = "spindynapy"
-version = "0.0.1"
-requires-python = ">=3.12"
+name = "spindynapy"             # Canonical package name (for publishing or local use)
+version = "0.0.1"               # Initial version
+requires-python = ">=3.12"      # Minimum Python version (CPython ABI compatibility)
+
+# -------------------------------------------------------------------
+#  setuptools Configuration
+# -------------------------------------------------------------------
 
 [tool.setuptools]
-packages = []  # Не использовать авто-дискавери
+packages = []                   # No automatic discovery; only explicit packages included
 
 [tool.setuptools.dynamic]
-# version = {file = "spindynapy/__init__.py"}
+# version = {file = "spindynapy/__init__.py"}  # Optional: extract version from __init__.py
