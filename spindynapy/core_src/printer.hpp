@@ -179,6 +179,21 @@ template <typename CoordSystem> class PYTHON_API IPrinter {
     ) const = 0;
 
     /**
+     * @brief Format a single time-series line (per step).
+     *
+     * Embeds global values like energy and magnetisation; may include
+     *   interaction-resolved energies depending on the format string.
+     *
+     * @param step_data Step to export.
+     * @param format    Format string (default: time_series_format_default).
+     *
+     * @returns Formatted line.
+     */
+    PYTHON_API virtual std::string timeSeriesLine(
+        const SimulationStepData<CoordSystem> &step_data, std::string format = time_series_format_default
+    ) const = 0;
+
+    /**
      * @brief Export a time-series trace over simulation steps.
      *
      * The output is a tabular format containing key summary quantities per step,
@@ -289,38 +304,6 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
             fmt::arg("dir_y", dir.y()),
             fmt::arg("dir_z", dir.z())
         );
-    }
-
-    /**
-     * @brief Format a single time-series line (per step).
-     *
-     * Embeds global values like energy and magnetisation; may include
-     *   interaction-resolved energies depending on the format string.
-     *
-     * @param step_data Step to export.
-     * @param format    Format string (default: time_series_format_default).
-     *
-     * @returns Formatted line.
-     */
-    std::string timeSeriesLine(
-        const SimulationStepData<NamespaceCoordSystem> &step_data,
-        std::string format = time_series_format_default
-    ) const {
-        const auto mean_magnetization = step_data.getMeanMagnetization();
-        fmt::dynamic_format_arg_store<fmt::format_context> store;
-        store.push_back(fmt::arg("step", step_data.step));
-        store.push_back(fmt::arg("sim_time", step_data.time));
-        store.push_back(fmt::arg("full_energy", step_data.getEnergy()));
-        store.push_back(fmt::arg("magnetization", mean_magnetization.norm()));
-        store.push_back(fmt::arg("magnetization_x", mean_magnetization.x()));
-        store.push_back(fmt::arg("magnetization_y", mean_magnetization.y()));
-        store.push_back(fmt::arg("magnetization_z", mean_magnetization.z()));
-        for (auto &[interaction_number, interaction_energy] : step_data.getEnergyByInteraction()) {
-            store.push_back(
-                fmt::arg(("energy_" + std::to_string(interaction_number)).c_str(), interaction_energy)
-            );
-        }
-        return fmt::vformat(format, store);
     }
 
     /**
@@ -624,6 +607,38 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
     }
 
     /**
+     * @brief Format a single time-series line (per step).
+     *
+     * Embeds global values like energy and magnetisation; may include
+     *   interaction-resolved energies depending on the format string.
+     *
+     * @param step_data Step to export.
+     * @param format    Format string (default: time_series_format_default).
+     *
+     * @returns Formatted line.
+     */
+    PYTHON_API virtual std::string timeSeriesLine(
+        const SimulationStepData<NamespaceCoordSystem> &step_data,
+        std::string format = time_series_format_default
+    ) const override {
+        const auto mean_magnetization = step_data.getMeanMagnetization();
+        fmt::dynamic_format_arg_store<fmt::format_context> store;
+        store.push_back(fmt::arg("step", step_data.step));
+        store.push_back(fmt::arg("sim_time", step_data.time));
+        store.push_back(fmt::arg("full_energy", step_data.getEnergy()));
+        store.push_back(fmt::arg("magnetization", mean_magnetization.norm()));
+        store.push_back(fmt::arg("magnetization_x", mean_magnetization.x()));
+        store.push_back(fmt::arg("magnetization_y", mean_magnetization.y()));
+        store.push_back(fmt::arg("magnetization_z", mean_magnetization.z()));
+        for (auto &[interaction_number, interaction_energy] : step_data.getEnergyByInteraction()) {
+            store.push_back(
+                fmt::arg(("energy_" + std::to_string(interaction_number)).c_str(), interaction_energy)
+            );
+        }
+        return fmt::vformat(format, store);
+    }
+
+    /**
      * @brief Emit a time-series report over all steps in a simulation.
      *
      * Includes:
@@ -706,6 +721,21 @@ class PYTHON_API SimulationPrinter : public AbstractPrinter {
                 "\n"                                                                                         \
                 "@returns \"Raw\"-compatible string."                                                        \
             )                                                                                                \
+        )                                                                                                    \
+        .def(                                                                                                \
+            "time_series_line",                                                                              \
+            &cls::timeSeriesLine,                                                                            \
+            py::arg("step_data"),                                                                            \
+            py::arg("format") = time_series_format_default,                                                  \
+            py::doc("@brief Format a single time-series line (per step).\n"                                  \
+                    "\n"                                                                                     \
+                    "Embeds global values like energy and magnetisation; may include\n"                      \
+                    "interaction-resolved energies depending on the format string.\n"                        \
+                    "\n"                                                                                     \
+                    "@param step_data Step to export.\n"                                                     \
+                    "@param format    Format string (default: time_series_format_default).\n"                \
+                    "\n"                                                                                     \
+                    "@returns Formatted line.")                                                              \
         )                                                                                                    \
         .def(                                                                                                \
             "time_series",                                                                                   \

@@ -172,8 +172,6 @@ template <CoordSystemConcept CoordSystem> class PYTHON_API IInteraction {
  * @typedef InteractionRegistry
  * @brief  Registry of physical interactions for a given coordinate system.
  *
- * @tparam CoordSystem  Coordinate system used by the simulation (e.g., Cartesian).
- *
  * The `InteractionRegistry` stores instances of `Interaction` and provides
  *   global access to the active set of interactions in the system.
  *
@@ -202,8 +200,6 @@ namespace PYTHON_API cartesian {
 /**
  * @typedef  AbstractInteraction
  * @brief  Abstract interface for physical interactions in a spin system.
- *
- * @tparam CoordSystem  Coordinate system type satisfying `CoordSystemConcept`.
  *
  * This interface defines the contract for implementing physical interactions
  *   between magnetic moments in a given geometry. It abstracts away the details
@@ -1217,7 +1213,12 @@ using AbstractInteractionRegistry = PYTHON_API InteractionRegistry<NamespaceCoor
                     "@returns Short interaction name (e.g., \"EXCHANGE\").")                                 \
         )
 
-// функция для связывания взаимодействий с Python
+/**
+ * @brief Bind the interactions utilities to a Python sub‑module.
+ *
+ * @param module Parent PyBind11 module (usually the core extension module).
+ * @returns void – extends the parent module.
+ */
 inline void pyBindInteractions(py::module_ &module) {
     using namespace spindynapy;
 
@@ -1360,10 +1361,33 @@ inline void pyBindInteractions(py::module_ &module) {
         )
             .def(py::init())
             .doc() =
-            "Воздействие на моменты в силу магнитной анизотропии.\n"
+            "@class  AnisotropyInteraction\n"
+            "@brief  Magnetocrystalline anisotropy interaction.\n"
             "\n"
-            "Выбранная стратегия: в зависимости от типа анизотропии (односторонняя, кубическая и т.д.)\n"
-            "  рассчитывается вклад в эффективное поле на моменте.";
+            "This interaction models the internal energy and effective field resulting\n"
+            "  from material-specific anisotropy. It supports uniaxial anisotropy and is\n"
+            "  extensible to others (e.g., cubic).\n"
+            "\n"
+            "The effective field for uniaxial anisotropy is computed as:\n"
+            "\n"
+            "    B_aniso = (2 · k_u / μ_s) · (S · n) · n\n"
+            "\n"
+            "where:\n"
+            "  - k_u is the uniaxial anisotropy constant [J/atom],\n"
+            "  - n is the anisotropy axis (unit vector).\n"
+            "\n"
+            "The energy associated with this field is (uniaxial case):\n"
+            "\n"
+            "    E = −½ · μ_s · S · B_aniso\n"
+            "\n"
+            "The ½ factor arises due to differentiation of the quadratic energy form.\n"
+            "\n"
+            "@note This interaction expects material objects to hold a valid `Anisotropy` instance.\n"
+            "      If no anisotropy is defined, this interaction contributes nothing.\n"
+            "\n"
+            "@throws std::invalid_argument if anisotropy type is unsupported.\n"
+            "\n"
+            "@see UniaxialAnisotropy\n";
 
         py::class_<DipoleDipoleInteraction, AbstractInteraction, std::shared_ptr<DipoleDipoleInteraction>>(
             cartesian, "DipoleDipoleInteraction"
