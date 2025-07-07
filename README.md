@@ -372,7 +372,7 @@ make run # or just python main.py inside environment
 - No usage limitations
 - Fully Stubbed with `.pyi`
 
-> see [Features that would like to be added](https://github.com/ilyata76/umag/issues/4)
+> see [Features that would like to be added](https://github.com/users/ilyata76/projects/3)
 
 ### Known core issues
 
@@ -392,7 +392,7 @@ Technical
 - Rigid geometry
 - Pairwise dipole calculation is O(N²)
 
-> see [Issues that would like to be fixed](https://github.com/ilyata76/umag/issues/4)
+> see [Issues that would like to be fixed](https://github.com/users/ilyata76/projects/3)
 
 ## Quick start
 
