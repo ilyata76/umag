@@ -126,45 +126,63 @@ class UniaxialAnisotropy : public Anisotropy {
  * @brief  Immutable bundle of intrinsic magnetic properties.
  *
  * A `Material` instance is stored once in a registry and shared by reference
- * throughout the simulation to avoid duplication.
+ *   throughout the simulation to avoid duplication.
  *
- * @param exchange_constant_J Exchange constant (J) – strength of exchange interaction.
- * @param atomic_magnetic_saturation_magnetization Magnetic saturation (Bohr magnetons) – maximum magnetic
- *   moment per atom.
- * @param unit_cell_size Size of the unit cell (m) – defines the periodicity of the material.
- * @param atom_cell_size Size of the atomic cell (m) – fraction of the unit cell occupied by a single atom.
- * @param gyromagnetic_ratio Gyromagnetic ratio (rad/s/T) – relates magnetic moment to angular momentum.
- * @param damping_constant Damping constant (dimensionless) – describes energy dissipation in the system.
- * @param anisotropy Anisotropy instance (optional, Anisotropy class) – describes the material's magnetic
- *   anisotropy.
- * @param atomic_magnetic_saturation_absolute Absolute magnetic saturation (A·m²) – derived from
- * @param exchange_monomaterial_prefix Exchange monomaterial prefix (T) – derived from the exchange constant
- *      for a single material (no interface).
+ * This class incapsulates the essential properties of a magnetic material,
+ *   including the exchange constant, magnetic saturation, unit cell size, etc.
+ *
+ * This class have stored properties that are derived from the others parameters.
+ *   So that you don't have to count them directly, but can use the getters.
  *
  * @warning Properties must be recalculated after changing any of the parameters.
  */
 class Material {
-  public:
-    regnum material_number;                          ///< Registry index.
-    double exchange_constant_J;                      ///< Heisenberg exchange integral (*J*).
-    double atomic_magnetic_saturation_magnetization; ///< Saturation μ (Bohr magnetons).
-    std::shared_ptr<Anisotropy> anisotropy;          ///< Optional intrinsic anisotropy.
-    double gyromagnetic_ratio;                       ///< γ Gyromagnetic ratio (rad/s/T)
-    double damping_constant;                         ///< Gilbert damping α.
-    double unit_cell_size;                           ///< Edge length of unit cell (m).
-    double atom_cell_size;                           ///< Edge length of atomic cell (m).
+  private:
+    // ---------------------------------------------------------------------
+    //  Utilities
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Recalculate stored calculated properties.
+     *
+     * This method should be called automatically after setting any of the
+     *    parameters that affect derived
+     *
+     * @returns void - mutates the internal state.
+     */
+    void recalculateProperties() {
+        this->_atomic_magnetic_saturation_absolute =
+            this->_atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        this->_exchange_monomaterial_prefix =
+            this->_exchange_constant_J / this->_atomic_magnetic_saturation_absolute;
+    }
+
+  protected:
+    // ---------------------------------------------------------------------
+    //  Fields
+    // ---------------------------------------------------------------------
+
+    regnum _material_number;                          ///< Registry index.
+    double _exchange_constant_J;                      ///< Heisenberg exchange integral (*J*).
+    double _atomic_magnetic_saturation_magnetization; ///< Saturation μ (Bohr magnetons).
+    std::shared_ptr<Anisotropy> _anisotropy;          ///< Optional intrinsic anisotropy.
+    double _gyromagnetic_ratio;                       ///< γ Gyromagnetic ratio (rad/s/T)
+    double _damping_constant;                         ///< Gilbert damping α.
+    double _unit_cell_size;                           ///< Edge length of unit cell (m).
+    double _atom_cell_size;                           ///< Edge length of atomic cell (m).
 
     // calculated properties V V V
 
-    double atomic_magnetic_saturation_absolute; ///< μ_s = M_s·μ_B      [A·m²]
-    double exchange_monomaterial_prefix;        ///< C   = J / μ_s      [T]
+    double _atomic_magnetic_saturation_absolute; ///< μ_s = M_s·μ_B      [A·m²]
+    double _exchange_monomaterial_prefix;        ///< C   = J / μ_s      [T]
 
+  public:
     /**
      * @brief Construct a fully-specified material.
      *
      * @param material_number  Registry id.
-     * @param exchange_constant_J  Heisenberg exchange integral (*J*).
-     * @param atomic_magnetic_saturation_magnetization  Saturation moment (μ_B).
+     * @param exchange_constant_J  Heisenberg exchange integral (*J* per link).
+     * @param atomic_magnetic_saturation_magnetization  Saturation moment (μ_B per atom).
      * @param unit_cell_size   Unit cell size (m).
      * @param atom_cell_size   Atomic cell size (m).
      * @param gyromagnetic_ratio  γ (rad s⁻¹ T⁻¹). Defaults to free-spin value.
@@ -181,30 +199,220 @@ class Material {
         double damping_constant = 0.1,
         std::shared_ptr<Anisotropy> anisotropy = nullptr
     )
-        : material_number(material_number),
-          exchange_constant_J(exchange_constant_J),
-          atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
-          anisotropy(anisotropy),
-          gyromagnetic_ratio(gyromagnetic_ratio),
-          damping_constant(damping_constant),
-          unit_cell_size(unit_cell_size),
-          atom_cell_size(atom_cell_size) {
+        : _material_number(material_number),
+          _exchange_constant_J(exchange_constant_J),
+          _atomic_magnetic_saturation_magnetization(atomic_magnetic_saturation_magnetization),
+          _anisotropy(anisotropy),
+          _gyromagnetic_ratio(gyromagnetic_ratio),
+          _damping_constant(damping_constant),
+          _unit_cell_size(unit_cell_size),
+          _atom_cell_size(atom_cell_size) {
         this->recalculateProperties();
     };
+
+    // ---------------------------------------------------------------------
+    //  Accessors and mutators
+    // ---------------------------------------------------------------------
 
     /**
      * @brief Registry id accessor.
      *
      * @returns `regnum` unique number.
      */
-    regnum getNumber() const { return this->material_number; };
+    PYTHON_API inline regnum getNumber() const noexcept { return this->_material_number; };
+
+    /**
+     * @brief Set the material number.
+     *
+     * @param new_number New material number (must be non-negative).
+     *
+     * @throws std::invalid_argument if `new_number` is negative.
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setNumber(regnum new_number) {
+        if (new_number < 0) {
+            throw std::invalid_argument("Material number must be non-negative");
+        }
+        this->_material_number = new_number;
+    }
+
+    /**
+     * @brief Exchange constant accessor.
+     *
+     * @returns Exchange constant [J / atom link] – strength of exchange interaction.
+     */
+    PYTHON_API inline double getExchangeConstantJ() const noexcept { return this->_exchange_constant_J; }
+
+    /**
+     * @brief Set the exchange constant.
+     *
+     * @param new_exchange_constant_J New exchange constant [J / atom link].
+     *
+     * @details This will trigger recalculation of derived properties.
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setExchangeConstantJ(double new_exchange_constant_J) noexcept {
+        this->_exchange_constant_J = new_exchange_constant_J;
+        this->recalculateProperties();
+    }
+
+    /**
+     * @brief Atomic magnetic saturation magnetization accessor.
+     *
+     * @returns Saturation moment (μ_B per atom) – maximum magnetic moment per atom.
+     */
+    PYTHON_API inline double getAtomicMagneticSaturationMagnetization() const noexcept {
+        return this->_atomic_magnetic_saturation_magnetization;
+    }
+
+    /**
+     * @brief Set the atomic magnetic saturation magnetization.
+     *
+     * @param new_atomic_magnetic_saturation_magnetization New saturation moment (μ_B per atom).
+     *
+     * @details This will trigger recalculation of derived properties.
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setAtomicMagneticSaturationMagnetization(
+        double new_atomic_magnetic_saturation_magnetization
+    ) noexcept {
+        this->_atomic_magnetic_saturation_magnetization = new_atomic_magnetic_saturation_magnetization;
+        this->recalculateProperties();
+    }
+
+    /**
+     * @brief Get the anisotropy instance.
+     *
+     * @returns Anisotropy instance (optional (may be nullptr), Anisotropy class) – describes the material's
+     * magnetic anisotropy.
+     */
+    PYTHON_API inline std::shared_ptr<Anisotropy> getAnisotropy() const noexcept { return this->_anisotropy; }
+
+    /**
+     * @brief Set the anisotropy instance.
+     *
+     * @param new_anisotropy New anisotropy instance (optional (may be nullptr), Anisotropy class).
+     *
+     * @details This will not trigger recalculation of derived properties.
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setAnisotropy(std::shared_ptr<Anisotropy> new_anisotropy) {
+        this->_anisotropy = new_anisotropy;
+    }
+
+    /**
+     * @brief Gyromagnetic ratio accessor.
+     *
+     * @returns Gyromagnetic ratio (rad/s/T) – relates magnetic moment to angular momentum.
+     */
+    PYTHON_API inline double getGyromagneticRatio() const noexcept { return this->_gyromagnetic_ratio; }
+
+    /**
+     * @brief Set the gyromagnetic ratio.
+     *
+     * @param new_gyromagnetic_ratio New gyromagnetic ratio (rad/s/T).
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setGyromagneticRatio(double new_gyromagnetic_ratio) noexcept {
+        this->_gyromagnetic_ratio = new_gyromagnetic_ratio;
+    }
+
+    /**
+     * @brief Damping constant accessor.
+     *
+     * @returns Damping constant (dimensionless) – describes energy dissipation in the system.
+     */
+    PYTHON_API inline double getDampingConstant() const noexcept { return this->_damping_constant; }
+
+    /**
+     * @brief Set the damping constant.
+     *
+     * @param new_damping_constant New damping constant (dimensionless).
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setDampingConstant(double new_damping_constant) noexcept {
+        this->_damping_constant = new_damping_constant;
+    }
+
+    /**
+     * @brief Get the absolute atomic magnetic saturation.
+     *
+     * @returns Absolute magnetic saturation (A·m²) – derived from the atomic magnetic saturation
+     * magnetization.
+     */
+    PYTHON_API inline double getUnitCellSize() const noexcept { return this->_unit_cell_size; }
+
+    /**
+     * @brief Set the unit cell size.
+     *
+     * @param new_unit_cell_size New unit cell size (m).
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setUnitCellSize(double new_unit_cell_size) noexcept {
+        this->_unit_cell_size = new_unit_cell_size;
+    }
+
+    /**
+     * @brief Get the atomic cell size.
+     *
+     * @returns Atomic cell size (m) – fraction of the unit cell occupied by a single atom.
+     */
+    PYTHON_API inline double getAtomCellSize() const noexcept { return this->_atom_cell_size; }
+
+    /**
+     * @brief Set the atomic cell size.
+     *
+     * @param new_atom_cell_size New atomic cell size (m).
+     *
+     * @returns void - mutates the internal state.
+     */
+    PYTHON_API inline void setAtomCellSize(double new_atom_cell_size) noexcept {
+        this->_atom_cell_size = new_atom_cell_size;
+    }
+
+    /**
+     * @brief Get the absolute atomic magnetic saturation.
+     *
+     * @details This value is derived from the atomic magnetic saturation magnetization
+     *          so you can't set it directly.
+     *
+     * @returns Absolute magnetic saturation (A·m²) – derived from the atomic magnetic saturation
+     * magnetization.
+     */
+    PYTHON_API inline double getAtomicMagneticSaturationAbsolute() const noexcept {
+        return this->_atomic_magnetic_saturation_absolute;
+    }
+
+    /**
+     * @brief Get the exchange monomaterial prefix.
+     *
+     * @details This value is derived from the exchange constant and absolute magnetic saturation
+     *          so you can't set it directly.
+     *
+     * @returns Exchange monomaterial prefix (T) – derived from the exchange constant for a single material
+     * (no interface).
+     */
+    PYTHON_API inline double getExchangePrefix() const noexcept {
+        return this->_exchange_monomaterial_prefix;
+    }
+
+    // ---------------------------------------------------------------------
+    //  Representation
+    // ---------------------------------------------------------------------
 
     /**
      * @brief Human-readable description.
      *
      * @returns String describing parameters.
      */
-    std::string __str__() const { return std::to_string(this->material_number); };
+    std::string __str__() const { return std::to_string(this->_material_number); };
 
     /**
      * @brief Python-like string representation.
@@ -215,11 +423,15 @@ class Material {
         return std::format(
             "Material(material_number={}, exchange_constant_J={}, "
             "atomic_magnetic_saturation_magnetization={})",
-            this->material_number,
-            this->exchange_constant_J,
-            this->atomic_magnetic_saturation_magnetization
+            this->_material_number,
+            this->_exchange_constant_J,
+            this->_atomic_magnetic_saturation_magnetization
         );
     }
+
+    // ---------------------------------------------------------------------
+    //  Operators
+    // ---------------------------------------------------------------------
 
     /**
      * @brief Equality operator.
@@ -229,21 +441,14 @@ class Material {
      *
      * @returns `true` if materials match.
      */
-    bool operator==(const Material &other) const { return material_number == other.material_number; }
-
-    void recalculateProperties() {
-        this->atomic_magnetic_saturation_absolute =
-            this->atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        this->exchange_monomaterial_prefix =
-            this->exchange_constant_J / this->atomic_magnetic_saturation_absolute;
-    }
+    bool operator==(const Material &other) const { return this->_material_number == other.getNumber(); }
 };
 
 /**
  * @class  MaterialInterface
  * @brief  Interface between two materials.
  */
-class MaterialInterface {};
+class MaterialInterface : public Material {};
 
 // ==========================================================================
 //  Region
@@ -767,60 +972,102 @@ inline void pyBindTypes(py::module_ &module) {
             py::arg("damping_constant") = 0.1,
             py::arg("anisotropy").none(true) = pybind11::none()
         )
-        .def(
-            "get_number",
+        .def_property(
+            "material_number",
             &Material::getNumber,
+            &Material::setNumber,
             py::doc("@brief Registry id accessor.\n"
                     "\n"
-                    "@returns `regnum` unique number.")
+                    "@returns `regnum` unique number.\n")
         )
-        .def_readwrite("material_number", &Material::material_number)
         .def_property(
             "exchange_constant_J",
-            [](const Material &self) { return self.exchange_constant_J; },
-            [](Material &self, double J) {
-                self.exchange_constant_J = J;
-                self.recalculateProperties();
-            },
-            py::doc("Exchange constant (J). Triggers recomputation of derived fields.")
+            &Material::getExchangeConstantJ,
+            &Material::setExchangeConstantJ,
+            py::doc("@brief Exchange constant accessor.\n"
+                    "\n"
+                    "@returns Exchange constant [J / atom link] – strength of exchange interaction.")
         )
         .def_property(
             "atomic_magnetic_saturation_magnetization",
-            [](const Material &self) { return self.atomic_magnetic_saturation_magnetization; },
-            [](Material &self, double muB) {
-                self.atomic_magnetic_saturation_magnetization = muB;
-                self.recalculateProperties();
-            },
-            py::doc("Saturation moment (μ_B per atom). Triggers recomputation of derived fields.")
+            &Material::getAtomicMagneticSaturationMagnetization,
+            &Material::setAtomicMagneticSaturationMagnetization,
+            py::doc("@brief Atomic magnetic saturation magnetization accessor.\n"
+                    "\n"
+                    "@returns Saturation moment (μ_B per atom) – maximum magnetic moment per atom.")
         )
-        .def_readwrite("anisotropy", &Material::anisotropy)
-        .def_readwrite("gyromagnetic_ratio", &Material::gyromagnetic_ratio)
-        .def_readwrite("damping_constant", &Material::damping_constant)
-        .def_readwrite("unit_cell_size", &Material::unit_cell_size)
-        .def_readwrite("atom_cell_size", &Material::atom_cell_size)
-        .def_readonly("atomic_magnetic_saturation_absolute", &Material::atomic_magnetic_saturation_absolute)
-        .def_readonly("exchange_monomaterial_prefix", &Material::exchange_monomaterial_prefix)
-        .doc() =
-        "@class  Material\n"
-        "@brief  Immutable bundle of intrinsic magnetic properties.\n"
-        "\n"
-        "A `Material` instance is stored once in a registry and shared by reference\n"
-        "throughout the simulation to avoid duplication.\n"
-        "\n"
-        "@param exchange_constant_J Exchange constant (J) – strength of exchange interaction.\n"
-        "@param atomic_magnetic_saturation_magnetization Magnetic saturation (Bohr magnetons) – maximum "
-        "magnetic\n"
-        "   moment per atom.\n"
-        "@param unit_cell_size Size of the unit cell (m) – defines the periodicity of the material.\n"
-        "@param atom_cell_size Size of the atomic cell (m) – fraction of the unit cell occupied by a single "
-        "atom.\n"
-        "@param gyromagnetic_ratio Gyromagnetic ratio (rad/s/T) – relates magnetic moment to angular "
-        "momentum.\n"
-        "@param damping_constant Damping constant (dimensionless) – describes energy dissipation in the "
-        "system.\n"
-        "@param anisotropy Anisotropy instance (optional, Anisotropy class) – describes the material's "
-        "magnetic\n"
-        "   anisotropy.";
+        .def_property(
+            "anisotropy",
+            &Material::getAnisotropy,
+            &Material::setAnisotropy,
+            py::doc(
+                "@brief Get the anisotropy instance.\n"
+                "\n"
+                "@returns Anisotropy instance (optional (may be nullptr), Anisotropy class) – describes the "
+                "material's magnetic anisotropy."
+            )
+        )
+        .def_property(
+            "gyromagnetic_ratio",
+            &Material::getGyromagneticRatio,
+            &Material::setGyromagneticRatio,
+            py::doc("@brief Gyromagnetic ratio accessor.\n"
+                    "\n"
+                    "@returns Gyromagnetic ratio (rad/s/T) – relates magnetic moment to angular momentum.")
+        )
+        .def_property(
+            "damping_constant",
+            &Material::getDampingConstant,
+            &Material::setDampingConstant,
+            py::doc("@brief Damping constant accessor.\n"
+                    "\n"
+                    "@returns Damping constant (dimensionless) – describes energy dissipation in the "
+                    "system.")
+        )
+        .def_property(
+            "unit_cell_size",
+            &Material::getUnitCellSize,
+            &Material::setUnitCellSize,
+            py::doc("@brief Get the unit cell size.\n"
+                    "\n"
+                    "@returns Unit cell size (m) – defines the periodicity of the material.")
+        )
+        .def_property(
+            "atom_cell_size",
+            &Material::getAtomCellSize,
+            &Material::setAtomCellSize,
+            py::doc("@brief Get the atomic cell size.\n"
+                    "\n"
+                    "@returns Atomic cell size (m) – fraction of the unit cell occupied by a single "
+                    "atom.")
+        )
+        .def_property_readonly(
+            "atomic_magnetic_saturation_absolute",
+            &Material::getAtomicMagneticSaturationAbsolute,
+            py::doc("@brief Get the absolute atomic magnetic saturation.\n"
+                    "\n"
+                    "@returns Absolute magnetic saturation (A·m²) – derived from the atomic magnetic "
+                    "saturation magnetization.")
+        )
+        .def_property_readonly(
+            "exchange_prefix",
+            &Material::getExchangePrefix,
+            py::doc("@brief Get the exchange monomaterial prefix.\n"
+                    "\n"
+                    "@returns Exchange monomaterial prefix (T) – derived from the exchange constant "
+                    "for a single material (no interface).")
+        )
+        .doc() = "@class  Material\n"
+                 "@brief  Immutable bundle of intrinsic magnetic properties.\n"
+                 "\n"
+                 "A `Material` instance is stored once in a registry and shared by reference\n"
+                 "throughout the simulation to avoid duplication.\n"
+                 "\n"
+                 "This class incapsulates the essential properties of a magnetic material,\n"
+                 "  including the exchange constant, magnetic saturation, unit cell size, etc.\n"
+                 "\n"
+                 "This class have stored properties that are derived from the others parameters.\n"
+                 "  So that you don't have to count them directly, but can use the getters.\n";
 
     // ---------------------------------------------------------------------
     //  Region bindings

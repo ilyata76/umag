@@ -296,7 +296,7 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
         const override {
         const auto &current_material = moment.getMaterial();
         const auto &direction = moment.getDirection().asVector();
-        return -0.5 * current_material.atomic_magnetic_saturation_absolute *
+        return -0.5 * current_material.getAtomicMagneticSaturationAbsolute() *
                direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
@@ -322,9 +322,8 @@ class PYTHON_API ExchangeInteraction : public AbstractInteraction {
         for (size_t neighbor_index : neighbor_indices) {
             exchange_field +=
                 (geometry[neighbor_index].getMaterial() == current_material
-                     ? current_material.exchange_monomaterial_prefix
-                     : current_material
-                           .exchange_monomaterial_prefix /* тут можно будет интерфейс использовать */
+                     ? current_material.getExchangePrefix()
+                     : current_material.getExchangePrefix() /* тут можно будет интерфейс использовать */
                 ) *
                 geometry[neighbor_index].getDirection().asVector();
         }
@@ -431,9 +430,7 @@ class PYTHON_API ExternalInteraction : public AbstractInteraction {
         const override {
         const auto &current_material = moment.getMaterial();
         const auto &direction = moment.getDirection().asVector();
-        const auto current_moment_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -current_moment_norm * direction.dot(field);
+        return -current_material.getAtomicMagneticSaturationAbsolute() * direction.dot(field);
     }
 
     /**
@@ -546,11 +543,8 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
         const override {
         const auto &current_material = moment.getMaterial();
         const auto &direction = moment.getDirection().asVector();
-        const auto current_moment_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-
         // из-за взятия производной от квадрата => / 2
-        return -current_moment_norm / 2 * direction.dot(field);
+        return -current_material.getAtomicMagneticSaturationAbsolute() / 2 * direction.dot(field);
     }
 
     /**
@@ -571,16 +565,14 @@ class PYTHON_API AnisotropyInteraction : public AbstractInteraction {
         //
         auto &moment = geometry[moment_index];
         auto &material = moment.getMaterial();
-        auto anisotropy = material.anisotropy;
-        auto atomic_magnetic_moments_norm =
-            material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        auto anisotropy = material.getAnisotropy();
 
         if (!anisotropy) {
             return EffectiveField::Zero(); // Нет анизотропии
         }
 
         if (auto uniaxial = dynamic_cast<UniaxialAnisotropy *>(anisotropy.get())) {
-            return 2 * uniaxial->constant / atomic_magnetic_moments_norm *
+            return 2 * uniaxial->constant / material.getAtomicMagneticSaturationAbsolute() *
                    moment.getDirection().asVector().dot(uniaxial->axis) * uniaxial->axis;
         }
 
@@ -678,9 +670,8 @@ class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
             auto distance_vector =
                 moment->getCoordinates().asVector() - current_moment.getCoordinates().asVector();
 
-            auto neighbor_atomistic_moment = moment->amplitude *
-                                             moment->getMaterial().atomic_magnetic_saturation_magnetization *
-                                             constants::BOHR_MAGNETON;
+            auto neighbor_atomistic_moment =
+                moment->amplitude * moment->getMaterial().getAtomicMagneticSaturationAbsolute();
             auto distance_norm = distance_vector.norm();
 
             if (distance_norm < 1e-30) {
@@ -754,9 +745,7 @@ class PYTHON_API DipoleDipoleInteraction : public AbstractInteraction {
         const override {
         const auto &current_material = moment.getMaterial();
         const auto &direction = moment.getDirection().asVector();
-        const auto current_moment_norm =
-            current_material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
-        return -0.5 * current_moment_norm * moment.amplitude *
+        return -0.5 * current_material.getAtomicMagneticSaturationAbsolute() * moment.amplitude *
                direction.dot(field); // TODO сделать через флаг pairwise на вызывающей стороне
     }
 
@@ -904,9 +893,9 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
             auto neighbor_indices = geometry.getNeighbors(moment_index, this->_cutoff_radius);
             auto calculation_moments = geometry.getFromIndexes(neighbor_indices);
             auto self_term = (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
-                             (current_material.atomic_magnetic_saturation_magnetization *
-                              constants::BOHR_MAGNETON * current_moment.getDirection().asVector()) /
-                             current_material.atom_cell_size;
+                             (current_material.getAtomicMagneticSaturationAbsolute() *
+                              current_moment.getDirection().asVector()) /
+                             current_material.getAtomCellSize();
             return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         } else if (this->_strategy == "macrocells") {
 
@@ -916,12 +905,11 @@ class DemagnetizationInteraction : public DipoleDipoleInteraction {
             auto macrocell_moment = macrocell.avg_moment;
 
             auto moment_term = macrocell_moment->amplitude * macrocell_moment->getDirection().asVector() *
-                               macrocell_moment->getMaterial().atomic_magnetic_saturation_magnetization *
-                               constants::BOHR_MAGNETON;
+                               macrocell_moment->getMaterial().getAtomicMagneticSaturationAbsolute();
 
             auto self_term =
                 (constants::VACUUM_MAGNETIC_PERMEABILITY / 3.0) *
-                (moment_term / (macrocell.moment_indices.size() * current_material.atom_cell_size));
+                (moment_term / (macrocell.moment_indices.size() * current_material.getAtomCellSize()));
 
             return this->calculate(current_moment, current_material, calculation_moments) - self_term;
         }
@@ -1066,12 +1054,11 @@ class PYTHON_API ThermalInteraction : public AbstractInteraction {
         auto &moment = geometry[moment_index];
         auto &material = moment.getMaterial();
         // учтём, что amplitude может быть >1
-        const double mu_s =
-            moment.amplitude * material.atomic_magnetic_saturation_magnetization * constants::BOHR_MAGNETON;
+        const double mu_s = moment.amplitude * material.getAtomicMagneticSaturationAbsolute();
 
         const double pref = std::sqrt(
-            2.0 * material.damping_constant * constants::BOLTZMANN_CONSTANT * _temperature /
-            (material.gyromagnetic_ratio * mu_s * _dt)
+            2.0 * material.getDampingConstant() * constants::BOLTZMANN_CONSTANT * _temperature /
+            (material.getGyromagneticRatio() * mu_s * _dt)
         );
 
         /* ---------- потокобезопасный RNG (по копии seed-а) ---------- */

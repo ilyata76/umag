@@ -977,7 +977,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 if ((material = moment->getMaterialSharedPtr())) {
                     material_counts[material]++;
                     total_moment_vector += moment->getDirection().asVector() *
-                                           material->atomic_magnetic_saturation_magnetization;
+                                           material->getAtomicMagneticSaturationMagnetization();
                 }
             }
 
@@ -1000,7 +1000,7 @@ class PYTHON_API MacrocellManager : virtual public AbstractMacrocellManager {
                 std::make_shared<Moment>(avg_coordinates_vector, avg_direction_vector, predominant_material);
             // общий вес намагниченности в диполь-дипольном взаимодействии
             cell.avg_moment->amplitude =
-                total_moment_vector.norm() / predominant_material->atomic_magnetic_saturation_magnetization;
+                total_moment_vector.norm() / predominant_material->getAtomicMagneticSaturationMagnetization();
         }
     };
 

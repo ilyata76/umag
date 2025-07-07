@@ -517,11 +517,11 @@ class PYTHON_API LLGSolver : public AbstractSolver {
     Eigen::Vector3d calculateLLGMomentChange(
         Material &material, Eigen::Vector3d moment_vector, Eigen::Vector3d effective_field
     ) {
-        auto prefix_term = material.gyromagnetic_ratio / (1.0 + pow(material.damping_constant, 2));
+        auto prefix_term = material.getGyromagneticRatio() / (1.0 + pow(material.getDampingConstant(), 2));
 
         Eigen::Vector3d moment_change =
             -(prefix_term * moment_vector.cross(effective_field) +
-              prefix_term * material.damping_constant *
+              prefix_term * material.getDampingConstant() *
                   moment_vector.cross(moment_vector.cross(effective_field)));
 
         return moment_change;
